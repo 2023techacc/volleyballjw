@@ -157,13 +157,13 @@ MonoBehaviour:
   _fixedTimestep: 0.01
   _solverIterations: 12
   _contactOffset: 0.005
-  _ballRadius: 0.105
+  _ballRadius: 0.156
   _ballMass: 0.27
-  _palmSize: {x: 0.19, y: 0.26, z: 0.055}
+  _palmSize: {x: 0.228, y: 0.312, z: 0.066}
   _fingerLengthMultiplier: 1.5
   _showFingers: 1
   _hitboxScale: 2.2
-  _hitboxDepthScale: 5
+  _hitboxDepthScale: 3.5
   _showHitbox: 0
   _fieldLength: 220
   _fieldWidth: 28

@@ -54,6 +54,14 @@ namespace HandVolley
                  "뒤로 물러나면 켠다.")]
         [SerializeField] private bool _invertDepth = true;
 
+        [Header("순간 이동 방지")]
+        [Tooltip("직전 속도로 예측한 이동량 위에 최소한 이만큼은 더 허용한다 (m). " +
+                 "너무 작으면 정상적인 가속(스윙 시작)도 잘려나간다.")]
+        [SerializeField] private float _baseJumpAllowance = 0.12f;
+        [Tooltip("허용치의 절대 상한 (m). expectedTravel 이 아무리 커도 이 이상은 " +
+                 "한 프레임에 이동한 것으로 보지 않는다.")]
+        [SerializeField] private float _absoluteJumpLimit = 0.45f;
+
         [Header("필터 (1€)")]
         [SerializeField] private float _minCutoff = 2.0f;
         [SerializeField] private float _beta = 0.06f;
@@ -95,11 +103,21 @@ namespace HandVolley
                  "따로 반전한다. 최종 회전의 오일러 X 성분만 뒤집으므로 다른 축과 " +
                  "얽히지 않는다.")]
         [SerializeField] private bool _invertPitch = true;
+        [Tooltip("피치(앞뒤 기울임) 배율. 실측 결과 실제로 45도 기울이면 게임 속 손은 " +
+                 "거의 90도(손가락이 바닥을 향함)까지 과장되어 나왔다 — 카메라에 가까울수록 " +
+                 "심해지고 멀어지면 나아지는 것으로 보아 단안 카메라 자세 추정이 가까운 " +
+                 "거리에서 더 민감해지는 현상으로 보인다. 1보다 작게 잡아 과장을 눌러준다. " +
+                 "중립(수평) 자세는 0도 그대로라 이 배율의 영향을 받지 않는다.")]
+        [SerializeField, Range(0.2f, 1.5f)] private float _pitchGain = 0.4f;
 
         [Header("추적 유실 처리")]
-        [Tooltip("짧은 유실을 관성으로 메우는 유예 시간 (초). 프레임 수 기준이면 " +
-                 "렌더 fps 에 따라 실제 유예 시간이 최대 5배까지 달라진다.")]
-        [SerializeField] private float _graceSeconds = 0.15f;
+        [Tooltip("짧은 유실을 관성으로 메우는 유예 시간 (초). 손을 카메라에 거의 수직으로 " +
+                 "세워 얇게 보이게 하면 MediaPipe 자체가 랜드마크를 잘 못 잡는데, 이 값이 " +
+                 "짧으면 그 순간 손이 뚝 끊긴다. 늘리면 그런 순간에도 마지막 속도로 " +
+                 "계속 움직이다가(관성) 부드럽게 멈추므로 덜 끊겨 보인다.")]
+        [SerializeField] private float _graceSeconds = 0.4f;
+        [Tooltip("유실 유예 동안 매 프레임 속도에 곱하는 감쇠율. 낮을수록 빨리 멈춘다 — " +
+                 "유예 시간을 늘려도 이 값 때문에 실제로는 오래 표류하지 않는다.")]
         [SerializeField, Range(0f, 1f)] private float _lostVelocityDecay = 0.85f;
 
         [Header("디버그")]
@@ -254,7 +272,20 @@ namespace HandVolley
 
                 if (_useDetectedHandSize) ApplyDetectedHandSize(obs.world);
 
-                Vector3 filtered = _posFilter.Filter(ToWorld(camSpace), dtObs);
+                Vector3 measuredWorld = ToWorld(camSpace);
+                if (_hasAnchor)
+                {
+                    // 단일 프레임 깊이 폭주(순간 이동) 방지. 직전 속도로 미루어 "이 정도는
+                    // 움직였을 수 있다"는 허용치를 만들고, 그보다 훨씬 먼 관측은 방향은
+                    // 살리되 거리만 잘라낸다 — 빠른 스윙 자체를 죽이지 않으면서 튐만 막는다.
+                    float expectedTravel = _velocity.magnitude * dtObs;
+                    float allowed = Mathf.Min(_absoluteJumpLimit, _baseJumpAllowance + expectedTravel * 1.8f);
+                    Vector3 delta = measuredWorld - _anchorPos;
+                    if (delta.magnitude > allowed)
+                        measuredWorld = _anchorPos + Vector3.ClampMagnitude(delta, allowed);
+                }
+
+                Vector3 filtered = _posFilter.Filter(measuredWorld, dtObs);
 
                 // 필터 내부 속도 추정값. 이제 관측 간격 기준이라 물리적으로 옳다.
                 _velocity = Vector3.ClampMagnitude(_posFilter.Velocity, _maxPredictionSpeed);
@@ -265,10 +296,16 @@ namespace HandVolley
                 _observationCount++;
 
                 Quaternion targetRot = ToWorldRotation(camRot);
-                if (_invertPitch)
+                if (_invertPitch || !Mathf.Approximately(_pitchGain, 1f))
                 {
                     Vector3 e = targetRot.eulerAngles;
-                    e.x = -e.x;
+                    // eulerAngles.x 는 0~360 범위다. 180 보다 큰 값은 "음의 각도"(예: 350 → -10)를
+                    // 그렇게 표현한 것이므로, 중립(0도) 기준 signed 각도로 바꿔야 배율을
+                    // 올바르게 곱할 수 있다 (그대로 곱하면 180 근처에서 부호가 뒤집힌다).
+                    float pitch = e.x > 180f ? e.x - 360f : e.x;
+                    if (_invertPitch) pitch = -pitch;
+                    pitch *= _pitchGain;
+                    e.x = pitch;
                     targetRot = Quaternion.Euler(e);
                 }
                 _filteredRot = Quaternion.Slerp(_filteredRot, targetRot,

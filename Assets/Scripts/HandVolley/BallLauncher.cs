@@ -124,6 +124,24 @@ namespace HandVolley
 
         public void SetHudVisible(bool visible) => _showHud = visible;
 
+        /// <summary>
+        /// AI 1대1 모드처럼 같은 공을 다른 모드가 쓸 때, 비거리 모드의 자동 서브를
+        /// 조용히 멈추기 위한 API. OnTurnComplete 는 호출하지 않는다 — 이건 턴이
+        /// "끝난" 게 아니라 다른 모드로 "넘어간" 것이라 결과 화면/랭킹 기록과는 무관하다.
+        /// </summary>
+        public void CancelTurn()
+        {
+            _sessionActive = false;
+            _inPlay = false;
+            _rally = 0;
+            if (_ball != null)
+            {
+                _ball.isKinematic = true;
+                BallPhysics.SetVelocity(_ball, Vector3.zero);
+                _ball.angularVelocity = Vector3.zero;
+            }
+        }
+
         private void OnDestroy()
         {
             if (_striker != null) _striker.OnBallStruck -= OnStruck;

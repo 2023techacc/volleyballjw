@@ -21,27 +21,21 @@
 //        {
 //            _handLandmarkerResultAnnotationController.DrawLater(result);
 //            // ↓ 이 한 줄만 추가
-//            _bridge.OnLandmarkerResult(result, timestamp);
+//            HandVolley.MediaPipeHandSource.Instance?.OnLandmarkerResult(result, timestamp);
 //        }
 //
-//   2) 그 스크립트가 있는 GameObject 에 SerializeField 하나를 추가한다.
-//
-//        [SerializeField] private HandVolley.MediaPipeHandSource _bridge;
-//
-//      그리고 인스펙터에서 씬에 있는 MediaPipeHandSource 오브젝트를 끌어다 놓는다.
-//
-//   3) 웹캠 해상도/미러 여부도 샘플이 갖고 있으므로, 샘플이 재생을 시작한 직후
+//   2) 웹캠 해상도/미러 여부도 샘플이 갖고 있으므로, 샘플이 재생을 시작한 직후
 //      (보통 ImageSource.Play() 가 끝난 콜백에서) 한 번만 아래를 호출한다.
 //
-//        _bridge.Configure(imageSource.textureWidth, imageSource.textureHeight,
-//                          imageSource.isFrontFacing);
+//        HandVolley.MediaPipeHandSource.Instance?.Configure(
+//            imageSource.textureWidth, imageSource.textureHeight, imageSource.isFrontFacing);
 //
 //      정확한 프로퍼티 이름은 설치된 플러그인 버전에 따라 다를 수 있다.
-//      HandLandmarkerRunner.cs (또는 그에 해당하는 실행 스크립트) 전체를 보여주시면
-//      이 세 군데를 실제 코드에 맞춰 정확한 줄로 짚어드릴 수 있다.
 //
-// 이 파일 자체는 그 실행 스크립트가 무엇이든 손댈 필요가 없다 — 위 1~3번만
-// 샘플 쪽에 추가하면 된다.
+// 이 파일 자체는 그 실행 스크립트가 무엇이든 손댈 필요가 없다 — 위 1~2번만
+// 샘플 쪽에 추가하면 된다. (Instance 정적 참조를 쓰므로 인스펙터 드래그 연결도 필요 없다 —
+// HandVolleyBootstrap 이 Play 시작 시점에 이 오브젝트를 코드로 만들기 때문에 에디터에
+// 미리 배치된 오브젝트가 아니라서 드래그해 둘 대상이 없다.)
 // ---------------------------------------------------------------------------
 
 using System;
@@ -65,6 +59,18 @@ namespace HandVolley
                  "0.3~0.4 로 낮추면 유실이 줄어든다 — 이 값은 참고용 표시일 뿐, " +
                  "실제 설정은 샘플의 HandLandmarkerOptions 에서 한다.")]
         [SerializeField, Range(0.1f, 0.9f)] private float _recommendedTrackingConfidence = 0.35f;
+
+        [Header("안정화")]
+        [Tooltip("빈 검출 결과가 와도 이 프레임 수까지는 마지막으로 유효했던 손을 그대로 " +
+                 "유지한다. 빠른 스윙 중 모션 블러나, 손을 카메라에 거의 수직으로 세워 " +
+                 "얇게 보이는 순간처럼 MediaPipe 자체가 검출을 놓치는 구간에서 손이 " +
+                 "바로 사라지지 않게 한다. HandTracker 의 Grace Seconds 와 별개로 더해진다.")]
+        [SerializeField, Range(0, 8)] private int _missFramesToHold = 5;
+
+        [Tooltip("일반 USB 웹캠 원본 입력은 MediaPipe handedness 판정이 셀피(전면 카메라) " +
+                 "기준과 반대로 나오는 경우가 많다 (실측으로 확인됨). 손등/손가락이 반대로 " +
+                 "붙어 보이면 이 값을 토글한다.")]
+        [SerializeField] private bool _invertReportedHandedness = true;
 
         [Header("진단")]
         [Tooltip("Configure() 나 결과 수신이 일정 시간 없으면 경고를 낸다.")]
@@ -90,12 +96,15 @@ namespace HandVolley
         public int ImageHeight => _configured ? _height : _fallbackHeight;
         public bool Mirrored => _configured ? _mirrored : _fallbackMirrored;
 
-        // HandVolleyBootstrap 이 이 오브젝트를 Play 시작 시점에 코드로 생성하기 때문에
-        // (씬에 미리 배치된 오브젝트가 아니다), MediaPipe 샘플의 실행 스크립트에서
-        // 에디터 인스펙터로 미리 드래그해 둘 대상이 없다. 대신 정적 참조로 런타임에
-        // 찾도록 한다 — 샘플 스크립트에서는 SerializeField 대신
-        // `HandVolley.MediaPipeHandSource.Instance` 를 그대로 쓰면 된다.
         public static MediaPipeHandSource Instance { get; private set; }
+
+        /// <summary>
+        /// HandVolleyBootstrap 의 Show Debug Text 설정을 그대로 반영한다. 샘플의
+        /// HandLandmarkerRunner 가 이 값을 읽어 랜드마크 오버레이(웹캠 화면 위 손 골격
+        /// 표시)를 켜고 끈다 — 화면 녹화할 때는 꺼서 깨끗하게, 디버그할 때는 켜서
+        /// 실제로 뭐가 인식되는지 눈으로 확인할 수 있게 한다.
+        /// </summary>
+        public bool ShowDebugLandmarks { get; set; }
 
         private void Awake() => Instance = this;
         private void OnDestroy()
@@ -118,6 +127,10 @@ namespace HandVolley
         private readonly Vector3[] _outNormalized = new Vector3[HandLandmark.Count];
         private readonly Vector3[] _outWorld = new Vector3[HandLandmark.Count];
 
+        // GetLatest 자체의 프레임 간 연속성 판단용 (아래 참고).
+        private Vector2 _lastChosenWrist;
+        private bool _hasLastChosenWrist;
+
         private class HandBuffer
         {
             public bool valid;
@@ -126,6 +139,11 @@ namespace HandVolley
             public double timestamp;
             public readonly Vector3[] normalized = new Vector3[HandLandmark.Count];
             public readonly Vector3[] world = new Vector3[HandLandmark.Count];
+
+            // 안정화용 상태 — 전부 워커 스레드(OnLandmarkerResult)에서만 lock 안에서 쓴다.
+            public int missFrames;
+            public Vector2 lastWristNormalized;
+            public bool hasLastWrist;
         }
 
         /// <summary>
@@ -191,47 +209,126 @@ namespace HandVolley
         {
             lock (_lock)
             {
-                foreach (var buf in _buffers) buf.valid = false;
+                var updatedThisFrame = new bool[_buffers.Length];
 
-                if (result.handLandmarks == null) return;
-                int count = Mathf.Min(result.handLandmarks.Count, _buffers.Length);
-
-                for (int h = 0; h < count; h++)
+                if (result.handLandmarks != null)
                 {
-                    var lm = result.handLandmarks[h].landmarks;
-                    var wl = result.handWorldLandmarks != null && h < result.handWorldLandmarks.Count
-                             ? result.handWorldLandmarks[h].landmarks : null;
-                    if (lm == null || lm.Count < HandLandmark.Count ||
-                        wl == null || wl.Count < HandLandmark.Count) continue;
-
-                    var buf = _buffers[h];
-                    for (int i = 0; i < HandLandmark.Count; i++)
+                    int count = Mathf.Min(result.handLandmarks.Count, _buffers.Length);
+                    for (int h = 0; h < count; h++)
                     {
-                        buf.normalized[i] = new Vector3(lm[i].x, lm[i].y, lm[i].z);
-                        buf.world[i] = new Vector3(wl[i].x, wl[i].y, wl[i].z);
-                    }
+                        var lm = result.handLandmarks[h].landmarks;
+                        var wl = result.handWorldLandmarks != null && h < result.handWorldLandmarks.Count
+                                 ? result.handWorldLandmarks[h].landmarks : null;
+                        if (lm == null || lm.Count < HandLandmark.Count ||
+                            wl == null || wl.Count < HandLandmark.Count) continue;
 
-                    buf.side = HandSide.Unknown;
-                    buf.confidence = 1f;
-                    if (result.handedness != null && h < result.handedness.Count)
-                    {
-                        var cats = result.handedness[h].categories;
-                        if (cats != null && cats.Count > 0)
+                        if (!IsSane(lm, wl)) continue;
+
+                        float wx = lm[HandLandmark.Wrist].x;
+                        float wy = lm[HandLandmark.Wrist].y;
+                        if (wx < -0.25f || wx > 1.25f || wy < -0.25f || wy > 1.25f) continue;
+
+                        var wristW = wl[HandLandmark.Wrist];
+                        var midTipW = wl[HandLandmark.MiddleTip];
+                        float dx = midTipW.x - wristW.x, dy = midTipW.y - wristW.y, dz = midTipW.z - wristW.z;
+                        float handLen = Mathf.Sqrt(dx * dx + dy * dy + dz * dz);
+                        if (handLen < 0.06f || handLen > 0.30f) continue;
+
+                        HandSide side = HandSide.Unknown;
+                        float confidence = 1f;
+                        if (result.handedness != null && h < result.handedness.Count)
                         {
-                            // 알려진 이슈: 샘플에 따라 좌/우가 뒤집혀 나올 수 있다.
-                            // 실측으로 반대로 나옴을 확인함 (HandTracker 의 Log Diagnostics
-                            // "감지된 손" 표시로 검증) — 여기서 뒤집는다.
-                            buf.side = cats[0].categoryName == "Left" ? HandSide.Right : HandSide.Left;
-                            buf.confidence = cats[0].score;
+                            var cats = result.handedness[h].categories;
+                            if (cats != null && cats.Count > 0)
+                            {
+                                bool isLeftLabel = cats[0].categoryName == "Left";
+                                // 알려진 이슈: 일반 USB 웹캠에서는 셀피 기준과 반대로 나오는
+                                // 경우가 많다 (실측 확인됨) — _invertReportedHandedness 로 뒤집는다.
+                                if (_invertReportedHandedness) isLeftLabel = !isLeftLabel;
+                                side = isLeftLabel ? HandSide.Left : HandSide.Right;
+                                confidence = cats[0].score;
+                            }
                         }
+
+                        int slot = ChooseSlot(wx, wy, side);
+                        var buf = _buffers[slot];
+                        for (int i = 0; i < HandLandmark.Count; i++)
+                        {
+                            buf.normalized[i] = new Vector3(lm[i].x, lm[i].y, lm[i].z);
+                            buf.world[i] = new Vector3(wl[i].x, wl[i].y, wl[i].z);
+                        }
+                        buf.side = side;
+                        buf.confidence = confidence;
+                        buf.timestamp = timestampMs / 1000.0;
+                        buf.valid = true;
+                        buf.missFrames = 0;
+                        buf.lastWristNormalized = new Vector2(wx, wy);
+                        buf.hasLastWrist = true;
+                        updatedThisFrame[slot] = true;
                     }
-                    buf.timestamp = timestampMs / 1000.0;
-                    buf.valid = true;
+                }
+
+                // 이번 프레임에 안 갱신된 슬롯은, 유예 프레임 안에서는 마지막 값을 그대로
+                // 유지한 채 missFrames 만 늘린다. 유예를 넘겨야 실제로 무효화한다.
+                for (int i = 0; i < _buffers.Length; i++)
+                {
+                    if (updatedThisFrame[i]) continue;
+                    var buf = _buffers[i];
+                    if (!buf.valid) continue;
+                    buf.missFrames++;
+                    if (buf.missFrames > _missFramesToHold)
+                    {
+                        buf.valid = false;
+                        buf.hasLastWrist = false;
+                    }
                 }
             }
             // 워커 스레드에서 안전한 것은 이 원자적 증가뿐이다.
             // '도착 시각'은 메인 스레드(Update)가 이 카운터 변화를 보고 스스로 기록한다.
             System.Threading.Interlocked.Increment(ref _resultCounter);
+        }
+
+        private static bool IsFinite(float v) => !float.IsNaN(v) && !float.IsInfinity(v);
+
+        private static bool IsSane(
+            System.Collections.Generic.List<Mediapipe.Tasks.Components.Containers.NormalizedLandmark> lm,
+            System.Collections.Generic.List<Mediapipe.Tasks.Components.Containers.Landmark> wl)
+        {
+            for (int i = 0; i < HandLandmark.Count; i++)
+            {
+                if (!IsFinite(lm[i].x) || !IsFinite(lm[i].y) || !IsFinite(lm[i].z)) return false;
+                if (!IsFinite(wl[i].x) || !IsFinite(wl[i].y) || !IsFinite(wl[i].z)) return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// 이번 프레임 검출을 어느 버퍼 슬롯에 넣을지 고른다. MediaPipe 결과 배열의
+        /// 순서는 프레임마다 바뀔 수 있으므로, 이전 프레임 손목 위치와 가장 가까운
+        /// 슬롯을 우선 재사용해 같은 손이 같은 슬롯을 유지하게 한다.
+        /// </summary>
+        private int ChooseSlot(float wx, float wy, HandSide side)
+        {
+            int best = -1;
+            float bestDist = float.MaxValue;
+            for (int i = 0; i < _buffers.Length; i++)
+            {
+                var b = _buffers[i];
+                if (!b.hasLastWrist) continue;
+                float ddx = wx - b.lastWristNormalized.x;
+                float ddy = wy - b.lastWristNormalized.y;
+                float d = ddx * ddx + ddy * ddy;
+                if (d < bestDist) { bestDist = d; best = i; }
+            }
+            if (best >= 0 && bestDist < 0.35f * 0.35f) return best;
+
+            for (int i = 0; i < _buffers.Length; i++)
+                if (_buffers[i].valid && _buffers[i].side == side) return i;
+
+            for (int i = 0; i < _buffers.Length; i++)
+                if (!_buffers[i].valid) return i;
+
+            return 0;
         }
 #else
         /// <summary>
@@ -251,19 +348,47 @@ namespace HandVolley
         }
 #endif
 
+        /// <summary>
+        /// 가장 최근 유효한 손 하나를 고른다. 후보가 여럿이면 다음 점수로 고른다:
+        /// handedness 가 preferredSide 와 같으면 +2, 직전에 GetLatest 가 골랐던 손목
+        /// 위치에 가까울수록 최대 +3, handedness confidence * 0.25.
+        /// </summary>
         public HandObservation GetLatest(HandSide preferredSide)
         {
             lock (_lock)
             {
                 HandBuffer chosen = null;
+                float bestScore = float.NegativeInfinity;
+
                 foreach (var b in _buffers)
                 {
                     if (!b.valid) continue;
-                    if (preferredSide == HandSide.Unknown) { chosen = b; break; }
-                    if (b.side == preferredSide) { chosen = b; break; }
-                    chosen ??= b;   // 원하는 손이 없으면 아무 손이라도
+
+                    float score = 0f;
+                    if (preferredSide != HandSide.Unknown && b.side == preferredSide) score += 2f;
+
+                    if (_hasLastChosenWrist)
+                    {
+                        Vector2 wrist = new Vector2(b.normalized[HandLandmark.Wrist].x,
+                                                     b.normalized[HandLandmark.Wrist].y);
+                        float dist = Vector2.Distance(wrist, _lastChosenWrist);
+                        score += Mathf.Max(0f, 3f - dist * 10f);
+                    }
+
+                    score += b.confidence * 0.25f;
+
+                    if (score > bestScore) { bestScore = score; chosen = b; }
                 }
-                if (chosen == null) return HandObservation.Invalid;
+
+                if (chosen == null)
+                {
+                    _hasLastChosenWrist = false;
+                    return HandObservation.Invalid;
+                }
+
+                _lastChosenWrist = new Vector2(chosen.normalized[HandLandmark.Wrist].x,
+                                                chosen.normalized[HandLandmark.Wrist].y);
+                _hasLastChosenWrist = true;
 
                 System.Array.Copy(chosen.normalized, _outNormalized, HandLandmark.Count);
                 System.Array.Copy(chosen.world, _outWorld, HandLandmark.Count);

@@ -26,6 +26,13 @@ namespace HandVolley
         /// <summary>평균 제곱 재투영 오차가 이 값 아래면 충분히 수렴한 것으로 본다 (px²).</summary>
         private const float GoodEnoughCost = 4.0f;
 
+        /// <summary>
+        /// Huber loss 경계 (px). 이 안쪽은 일반 최소제곱과 동일하게, 바깥쪽은 선형으로
+        /// 완화해 손끝 한 점의 20~50px 짜리 튀는 오차가 전체 깊이 추정을 끌어당기지
+        /// 않게 한다.
+        /// </summary>
+        private const float HuberDeltaPx = 8f;
+
         public struct Result
         {
             public bool success;
@@ -165,19 +172,25 @@ namespace HandVolley
                     float ru = u - pixels[i].x;
                     float rv = v - pixels[i].y;
 
+                    // Huber 가중치(IRLS): 현재 잔차가 클수록 이 점의 기여를 줄인다.
+                    // 손끝처럼 검출이 흔들리는 한 점이 나머지 20점의 정합 결과를
+                    // 끌어당기는 것을 막는다.
+                    float residual = Mathf.Sqrt(ru * ru + rv * rv);
+                    float weight = residual <= HuberDeltaPx ? 1f : HuberDeltaPx / Mathf.Max(residual, 1e-6f);
+
                     // ∂u/∂t = (fx/z, 0, -fx·x/z²),  ∂v/∂t = (0, fy/z, -fy·y/z²)
                     float a = K.fx * invZ;
                     float b = -K.fx * p.x * invZ * invZ;
                     float c = K.fy * invZ;
                     float d = -K.fy * p.y * invZ * invZ;
 
-                    m00 += a * a;          m02 += a * b;
-                    m11 += c * c;          m12 += c * d;
-                    m22 += b * b + d * d;
+                    m00 += weight * a * a;          m02 += weight * a * b;
+                    m11 += weight * c * c;          m12 += weight * c * d;
+                    m22 += weight * (b * b + d * d);
                     // m01 은 두 행 모두 0 성분이라 0으로 남는다
-                    g0 += a * ru;
-                    g1 += c * rv;
-                    g2 += b * ru + d * rv;
+                    g0 += weight * a * ru;
+                    g1 += weight * c * rv;
+                    g2 += weight * (b * ru + d * rv);
                 }
 
                 bool stepTaken = false;
@@ -230,9 +243,14 @@ namespace HandVolley
                 float invZ = 1f / p.z;
                 float du = K.fx * p.x * invZ + K.cx - pixels[i].x;
                 float dv = K.fy * p.y * invZ + K.cy - pixels[i].y;
-                sum += du * du + dv * dv;
+                float residual = Mathf.Sqrt(du * du + dv * dv);
+                // Huber loss: 경계 안쪽은 제곱오차와 같아 meanReprojError(=sqrt(cost)) 해석이
+                // 그대로 유지되고, 바깥쪽(outlier)만 선형으로 완화된다.
+                sum += residual <= HuberDeltaPx
+                    ? residual * residual
+                    : 2f * HuberDeltaPx * residual - HuberDeltaPx * HuberDeltaPx;
             }
-            return sum / n;   // 평균 제곱 재투영 오차 (px²)
+            return sum / n;   // 평균 Huber 재투영 손실 (px² 단위, 소잔차에서는 px² 그대로)
         }
 
         /// <summary>대칭 3x3 선형계 해법 (여인수 전개).</summary>
@@ -267,6 +285,9 @@ namespace HandVolley
         /// 손바닥 법선을 가리키게 된다. Right 일 때 across 를 뒤집어 항상 손등
         /// 법선이 나오게 한다 (실측으로 방향 확인함 — Left 기준이었던 이전 버전은 반대였다).
         ///
+        /// up/across 는 각각 4개 MCP 관절과 손가락 양쪽 가장자리를 평균해서 구한다.
+        /// MCP 하나에만 의존하면 그 점의 검출 흔들림이 회전 전체를 흔들기 때문이다.
+        ///
         /// invertNormal/invertUp: 실기기·플러그인 버전마다 카메라 좌표계 관례가
         /// 미묘하게 달라서 부호를 코드로 단정하기 어렵다. HandTracker 인스펙터에서
         /// 즉시 토글해 가며 맞는 조합을 찾을 수 있게 노출한다.
@@ -278,8 +299,14 @@ namespace HandVolley
             if (world == null || world.Length < HandLandmark.Count) return false;
 
             Vector3 wrist = world[HandLandmark.Wrist];
-            Vector3 up = world[HandLandmark.MiddleMcp] - wrist;          // 손목 → 중지
-            Vector3 across = world[HandLandmark.PinkyMcp] - world[HandLandmark.IndexMcp];
+
+            Vector3 knuckleCenter = (world[HandLandmark.IndexMcp] + world[HandLandmark.MiddleMcp] +
+                                      world[HandLandmark.RingMcp] + world[HandLandmark.PinkyMcp]) * 0.25f;
+            Vector3 indexEdge = (world[HandLandmark.IndexMcp] + world[HandLandmark.MiddleMcp]) * 0.5f;
+            Vector3 pinkyEdge = (world[HandLandmark.RingMcp] + world[HandLandmark.PinkyMcp]) * 0.5f;
+
+            Vector3 up = knuckleCenter - wrist;              // 손목 → (MCP 평균)
+            Vector3 across = pinkyEdge - indexEdge;           // 검지 쪽 가장자리 → 새끼 쪽 가장자리
             if (side == HandSide.Right) across = -across;
 
             if (up.sqrMagnitude < 1e-8f || across.sqrMagnitude < 1e-8f) return false;
