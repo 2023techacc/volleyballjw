@@ -1,0 +1,55 @@
+# ------------------------------------------------------------------ #
+# Unity 가 자동 생성하는 산출물 — 전부 다시 만들어지므로 커밋하지 않는다.
+# ------------------------------------------------------------------ #
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]serSettings/
+[Mm]emoryCaptures/
+[Rr]ecordings/
+
+# IDE/에디터가 프로젝트를 열 때마다 새로 만드는 스크립트 프로젝트 파일
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Asset Store/패키지 매니저 캐시
+/[Aa]ssets/AssetStoreTools*
+/[Aa]ssets/Plugins/Editor/JetBrains*
+
+# 크래시 리포트
+sysinfo.txt
+*.stackdump
+
+# 빌드 산출물
+*.apk
+*.aab
+*.unitypackage
+*.app
+
+# ------------------------------------------------------------------ #
+# 프로젝트 고유
+# ------------------------------------------------------------------ #
+# 캘리브레이션 결과는 장비(웹캠)마다 값이 달라진다. 새 장비/환경에서는
+# tools/calibrate_camera.py 로 각자 다시 생성해야 하는 파일이라 커밋하지 않는다.
+# 팀에 공유용 "SAMPLE - NOT CALIBRATED" 플레이스홀더를 유지하고 싶다면
+# 이 줄을 지우고 그 파일만 직접 커밋하면 된다.
+/Assets/StreamingAssets/camera_intrinsics.json
+
+# .vscode 워크스페이스 설정은 개인 환경(경로 등)이 섞이기 쉬워 보통 공유하지 않는다.
+# 팀에서 공용 설정을 맞추고 싶다면 이 줄을 지우면 된다.
+.vscode/
