@@ -161,13 +161,51 @@ namespace HandVolley
         public float ReprojectionError => _lastReprojError;
         public CameraIntrinsics Intrinsics => _scaled;
 
+        // 이번 관측의 원본(리매핑 전) 카메라 공간 깊이 (m). 거리 보정 기준점으로 쓴다.
+        private float _lastRawDepth = 0.8f;
+
+        /// <summary>
+        /// 인스펙터 드래그 연결 없이 게임 내 설정 화면에서 거리 보정 버튼을 배선하기 위한
+        /// 정적 참조. HandTracker 는 Play 시점에 코드로 생기는 오브젝트라 씬에 미리
+        /// 없으므로, MediaPipeHandSource.Instance 와 같은 패턴을 그대로 따른다.
+        /// </summary>
+        public static HandTracker Instance { get; private set; }
+
+        /// <summary>깊이 리매핑의 기준 거리 (m). z_cam == 이 값일 때 게임 속 손도 이 거리에 놓인다.</summary>
+        public float DepthPivot => _depthPivot;
+        public Vector2 DepthRange => _depthClamp;
+
         private Transform Origin => _trackingOrigin != null ? _trackingOrigin : transform;
 
         // ------------------------------------------------------------------ //
 
         private void Awake()
         {
+            Instance = this;
             _posFilter = new OneEuroFilterVector3(_minCutoff, _beta, _zMinCutoff, _zBeta);
+        }
+
+        private void OnDestroy()
+        {
+            if (Instance == this) Instance = null;
+        }
+
+        /// <summary>
+        /// 지금 카메라에 잡힌 손 위치를 기준 거리로 삼는다. 설정 화면에서
+        /// "지금 위치로 맞추기" 버튼이 호출한다 — 플레이어가 실제로 서고 싶은 자리에서
+        /// 누르면 그 자리가 곧바로 깊이 리매핑의 중립점이 된다.
+        /// </summary>
+        public bool CalibrateDepthToCurrent()
+        {
+            if (!IsTracking) return false;
+            _depthPivot = _lastRawDepth;
+            return true;
+        }
+
+        /// <summary>기준 거리를 수동으로 미세 조정한다 (m 단위, 클램프 범위 내로 제한).</summary>
+        public void AdjustDepthPivot(float deltaMeters)
+        {
+            _depthPivot = Mathf.Clamp(_depthPivot + deltaMeters, _depthClamp.x, _depthClamp.y);
         }
 
         /// <summary>
@@ -269,6 +307,8 @@ namespace HandVolley
                     HandleLost(dtRender);
                     return;
                 }
+
+                _lastRawDepth = Mathf.Clamp(camSpace.z, _depthClamp.x, _depthClamp.y);
 
                 if (_useDetectedHandSize) ApplyDetectedHandSize(obs.world);
 

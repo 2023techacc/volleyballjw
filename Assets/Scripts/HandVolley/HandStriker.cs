@@ -33,18 +33,25 @@ namespace HandVolley
         [SerializeField] private float _upwardBias = 3.2f;
 
         [Tooltip("공이 최소한 이 속도 이상으로는 튀어나가게 한다 (m/s).")]
-        [SerializeField] private float _minBallSpeed = 5f;
+        [SerializeField] private float _minBallSpeed = 6f;
 
         [SerializeField] private float _maxBallSpeed = 22f;
         [SerializeField] private float _hitCooldown = 0.12f;
+
+        [Header("초보자 보정")]
+        [Tooltip("타격 결과의 좌우(x) 성분을 일부 눌러 정면(코트 안쪽)으로 당겨준다. " +
+                 "0이면 끔, 1이면 완전히 정면으로만 나간다. 손 각도가 살짝 빗나가도 " +
+                 "공이 코트 밖으로 새는 걸 줄여 처음 하는 사람도 쉽게 넘길 수 있게 한다.")]
+        [SerializeField, Range(0f, 1f)] private float _aimAssist = 0.35f;
 
         [Header("관통 방지")]
         [Tooltip("공이 속한 레이어. SweepTestAll/OverlapSphere 안전망이 이 레이어만 검사한다.")]
         [SerializeField] private LayerMask _ballLayer = ~0;
 
         [Tooltip("목표 위치 중심 보조 판정 반경 (m). SweepTestAll 이 바닥/네트 같은 다른 " +
-                 "콜라이더에 가려 공을 놓치는 경우를 이걸로 보완한다.")]
-        [SerializeField, Range(0f, 0.5f)] private float _hitAssistRadius = 0.30f;
+                 "콜라이더에 가려 공을 놓치는 경우를 이걸로 보완한다. 초심자가 스치기만 " +
+                 "해도 맞은 것으로 쳐주도록 넉넉히 잡았다.")]
+        [SerializeField, Range(0f, 0.5f)] private float _hitAssistRadius = 0.38f;
 
         [Tooltip("타격 속도 계산에 쓰는 손 속도 상한 (m/s). 추적 튐이나 물리 이동 속도가 " +
                  "순간적으로 튀어도 이 이상으로는 타격에 반영하지 않는다.")]
@@ -57,6 +64,19 @@ namespace HandVolley
         [Tooltip("추적이 끊겼을 때 손을 아예 숨길지. 꺼두면 반투명으로만 표시해 " +
                  "'손이 사라졌다'는 혼란을 막는다.")]
         [SerializeField] private bool _hideWhenLost = false;
+
+        [Tooltip("타격 순간 눈에 보이는 손(팜/손가락)만 공이 있는 방향으로 살짝 내밀었다가 " +
+                 "제자리로 돌아온다. 판정용 히트박스나 공의 실제 위치는 전혀 바뀌지 않는 " +
+                 "순수 시각 효과 — 히트박스가 보이는 손보다 넓어서 생기는 '닿지도 않았는데 " +
+                 "날아간다'는 느낌을 이걸로 줄인다. HandVolleyBootstrap 이 배선하는 " +
+                 "VisualRoot(팜+손가락만의 부모, 히트박스는 제외)를 여기에 연결한다.")]
+        [SerializeField] private Transform _visualRoot;
+        [Tooltip("시각적으로 내미는 최대 거리 (m). 실제 타격 지점까지의 거리를 이 값으로 " +
+                 "clamp 해서, 아주 넓은 보조 판정으로 맞은 경우에도 손이 터무니없이 " +
+                 "늘어나 보이지 않게 한다.")]
+        [SerializeField] private float _maxVisualReach = 0.32f;
+        [Tooltip("내밀었던 손이 제자리로 돌아오는 속도 (로컬 단위/초). 클수록 빨리 되돌아온다.")]
+        [SerializeField] private float _visualReachRecoverySpeed = 1.4f;
 
         [Header("이벤트")]
         [SerializeField] private AudioSource _hitSound;
@@ -79,6 +99,7 @@ namespace HandVolley
         // 하나에 치우친 타격 속도가 나온다.
         private Vector3 _physicalVelocity;
         private Vector3 _lastHandVelocity;
+        private Vector3 _visualOffset;
 
         public Vector3 HandVelocity => _trackedVelocity;
         public System.Action<Rigidbody, Vector3> OnBallStruck;
@@ -211,6 +232,15 @@ namespace HandVolley
             _rb.MoveRotation(_targetRot);
         }
 
+        /// <summary>ApplyStrike 가 내민 VisualRoot 를 매 렌더 프레임 제자리로 되돌린다.</summary>
+        private void LateUpdate()
+        {
+            if (_visualRoot == null) return;
+            _visualOffset = Vector3.MoveTowards(_visualOffset, Vector3.zero,
+                _visualReachRecoverySpeed * Time.deltaTime);
+            _visualRoot.localPosition = _visualOffset;
+        }
+
         private void OnCollisionEnter(Collision collision) => HandleContact(collision);
         private void OnCollisionStay(Collision collision) => HandleContact(collision);
 
@@ -254,6 +284,11 @@ namespace HandVolley
             if (n.y > -0.65f && result.y < _upwardBias)
                 result.y = Mathf.Lerp(result.y, _upwardBias, 0.8f);
 
+            // 초심자 조준 보정 — 손 각도가 살짝 빗나가 좌우로 새는 타구를 정면 쪽으로
+            // 당겨준다. y/z 는 그대로 두고 x 성분만 줄이므로 높이감/깊이감은 바뀌지 않는다.
+            if (_aimAssist > 0f)
+                result.x = Mathf.Lerp(result.x, 0f, _aimAssist);
+
             if (result.magnitude < _minBallSpeed)
                 result = result.normalized * _minBallSpeed;
             result = Vector3.ClampMagnitude(result, _maxBallSpeed);
@@ -262,6 +297,16 @@ namespace HandVolley
 
             Vector3 spinAxis = Vector3.Cross(n, handTangent - incomingTangent);
             ball.angularVelocity = Vector3.ClampMagnitude(spinAxis * 3f, 80f);
+
+            // 시각 전용 — 판정/공 위치는 그대로 두고, 보이는 손(VisualRoot)만 공이 있는
+            // 방향으로 살짝 내밀었다가 LateUpdate 에서 되돌아온다.
+            if (_visualRoot != null)
+            {
+                Vector3 toBall = ball.position - _targetPos;
+                float reach = Mathf.Min(toBall.magnitude, _maxVisualReach);
+                Vector3 reachDir = toBall.sqrMagnitude > 1e-6f ? toBall.normalized : n;
+                _visualOffset = transform.InverseTransformVector(reachDir * reach);
+            }
 
             // 겹침 해소 — 다음 틱에 같은 충돌이 다시 잡히는 것을 막는다
             ball.position += n * _depenetration;

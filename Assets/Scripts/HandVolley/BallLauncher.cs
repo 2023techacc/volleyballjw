@@ -124,23 +124,23 @@ namespace HandVolley
 
         public void SetHudVisible(bool visible) => _showHud = visible;
 
-        /// <summary>
-        /// AI 1대1 모드처럼 같은 공을 다른 모드가 쓸 때, 비거리 모드의 자동 서브를
-        /// 조용히 멈추기 위한 API. OnTurnComplete 는 호출하지 않는다 — 이건 턴이
-        /// "끝난" 게 아니라 다른 모드로 "넘어간" 것이라 결과 화면/랭킹 기록과는 무관하다.
-        /// </summary>
-        public void CancelTurn()
+        /// <summary>메인 메뉴에서 공을 코트 위에 가볍게 띄워 둔다. 게임 시작 시 BeginTurn 이 다시 서브 위치로 옮긴다.</summary>
+        public void PrepareMenuScene()
         {
+            if (_ball == null) return;
             _sessionActive = false;
             _inPlay = false;
             _rally = 0;
-            if (_ball != null)
-            {
-                _ball.isKinematic = true;
-                BallPhysics.SetVelocity(_ball, Vector3.zero);
-                _ball.angularVelocity = Vector3.zero;
-            }
+            BallPhysics.SetVelocity(_ball, Vector3.zero);
+            _ball.angularVelocity = Vector3.zero;
+            _ball.isKinematic = true;
+            _ball.position = _targetPoint + new Vector3(0f, 0.75f, 1.65f);
+            _status = "준비";
+            if (_landingMarker != null) _landingMarker.gameObject.SetActive(false);
         }
+
+        /// <summary>개발용 공 물리 진단 텍스트만 별도로 켜고 끈다.</summary>
+        public void SetBallDebugVisible(bool visible) => _showBallDebug = visible;
 
         private void OnDestroy()
         {
@@ -314,56 +314,63 @@ namespace HandVolley
         {
             if (!_showHud) return;
 
-            var big = new GUIStyle(GUI.skin.label)
+            Matrix4x4 old = MinimalGui.BeginScaled();
+            try
             {
-                fontSize = 26,
-                alignment = TextAnchor.UpperCenter,
-                normal = { textColor = _newRecord && !_inPlay ? new Color(1f, 0.85f, 0.2f) : Color.white },
-            };
-            GUI.Label(new Rect(0, 14, Screen.width, 44), _status, big);
+                // 플레이 중에는 꼭 필요한 값 3개만 상단 카드로 보여준다.
+                DrawHudStat(new Rect(36, 34, 190, 96), "점수", _turnScore.ToString("N0"));
+                DrawHudStat(new Rect(705, 34, 190, 96), "남은 서브",
+                            Mathf.Max(0, _throwsPerTurn - _turnThrows).ToString());
+                DrawHudStat(new Rect(1374, 34, 190, 96), "최고 비거리", $"{_turnBestDistance:F1} m");
 
-            // 비행 중에는 현재 비거리를 실시간으로 보여준다
-            var live = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 20,
-                alignment = TextAnchor.UpperCenter,
-                normal = { textColor = new Color(0.7f, 0.95f, 1f) },
-            };
-            if (_inPlay && _ball != null && _rally > 0)
-            {
-                string rolling = _restTimer > 0.05f ? "  정지 중..." : "";
-                string bounce = _bounces > 0 ? $"   튕김 {_bounces}회" : "";
-                GUI.Label(new Rect(0, 52, Screen.width, 30),
-                          $"{Mathf.Max(0f, _ball.position.z):F1} m{bounce}{rolling}", live);
-            }
+                // 현재 상태는 작은 반투명 칩 하나로만 표시한다.
+                GUI.Box(new Rect(610, 150, 380, 48), GUIContent.none, MinimalGui.DarkChip);
+                GUI.Label(new Rect(628, 150, 344, 48), _status,
+                    MinimalGui.CenterLabel(18, Color.white, FontStyle.Bold));
 
-            var small = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 15,
-                alignment = TextAnchor.UpperCenter,
-                normal = { textColor = new Color(1f, 1f, 1f, 0.7f) },
-            };
-            GUI.Label(new Rect(0, Screen.height - 46, Screen.width, 30),
-                      $"총점 {_totalScore:N0}      최고 비거리 {_bestDistance:F1} m      " +
-                      $"시도 {_throws}회      R = 즉시 리셋", small);
-
-            if (_showBallDebug && _ball != null)
-            {
-                var dbg = new GUIStyle(GUI.skin.label)
+                // 공을 친 뒤에는 실시간 비거리만 한 줄 추가한다.
+                if (_inPlay && _ball != null && _rally > 0)
                 {
-                    fontSize = 13,
-                    alignment = TextAnchor.UpperRight,
-                    normal = { textColor = new Color(1f, 1f, 1f, 0.6f) },
-                };
-                Vector3 bp = _ball.position;
-                Vector3 bv = BallPhysics.GetVelocity(_ball);
-                GUI.Label(new Rect(Screen.width - 320, 16, 300, 110),
-                          $"비거리 {Mathf.Max(0f, bp.z):F2} m  (최고 도달 {_maxReached:F2} m)\n" +
-                          $"높이 {bp.y:F2} m  (착지선 {_floorHeight:F2})\n" +
-                          $"속도 {bv.magnitude:F1} m/s  상승 {bv.y:+0.0;-0.0}\n" +
-                          $"튕김 {_bounces}회   경과 {Time.time - _serveTime:F1}s\n" +
-                          $"직전 기록 {_lastDistance:F1} m / +{_lastPoints}점", dbg);
+                    string extra = _bounces > 0 ? $"  ·  바운드 {_bounces}" : "";
+                    GUI.Label(new Rect(610, 202, 380, 34),
+                              $"{Mathf.Max(0f, _ball.position.z):F1} m{extra}",
+                              MinimalGui.CenterLabel(20, Color.white, FontStyle.Bold));
+                }
+
+                // 디버그를 켠 경우에만 오른쪽 아래에 물리 정보가 나타난다.
+                if (_showBallDebug && _ball != null)
+                    DrawDebugPanel();
             }
+            finally
+            {
+                GUI.matrix = old;
+            }
+        }
+
+        private void DrawHudStat(Rect rect, string label, string value)
+        {
+            MinimalGui.DrawCard(rect);
+            GUI.Label(new Rect(rect.x + 16, rect.y + 12, rect.width - 32, 28), label,
+                MinimalGui.CenterLabel(15, MinimalGui.Muted));
+            GUI.Label(new Rect(rect.x + 12, rect.y + 40, rect.width - 24, 42), value,
+                MinimalGui.CenterLabel(28, MinimalGui.Accent, FontStyle.Bold));
+        }
+
+        private void DrawDebugPanel()
+        {
+            Rect panel = new Rect(1240, 690, 324, 170);
+            GUI.Box(panel, GUIContent.none, MinimalGui.DarkChip);
+
+            Vector3 bp = _ball.position;
+            Vector3 bv = BallPhysics.GetVelocity(_ball);
+            string text =
+                $"비거리 {Mathf.Max(0f, bp.z):F2} m   최고 {_maxReached:F2} m\n" +
+                $"높이 {bp.y:F2} m   속도 {bv.magnitude:F1} m/s\n" +
+                $"튕김 {_bounces}회   경과 {Time.time - _serveTime:F1}s\n" +
+                $"직전 {_lastDistance:F1} m / +{_lastPoints}점";
+
+            GUI.Label(new Rect(panel.x + 18, panel.y + 14, panel.width - 36, panel.height - 28),
+                      text, MinimalGui.Label(14, new Color(1f, 1f, 1f, 0.82f), TextAnchor.UpperLeft));
         }
 
         private void OnDrawGizmosSelected()

@@ -300,21 +300,24 @@ MonoBehaviour:
   _showDebugText: 1
   _webcamPosition: {x: 0, y: 1.25, z: 0}
   _webcamEuler: {x: 0, y: 0, z: 0}
+  _depthPivot: 0.8
+  _depthScale: 2.43
+  _depthClamp: {x: 0.35, y: 1.8}
+  _invertDepth: 1
   _invertPalmNormal: 0
   _invertPalmUp: 1
   _invertPitch: 1
-  _pitchGain: 1.191
-  _invertDepth: 1
+  _pitchGain: 1.5
   _fixedTimestep: 0.01
   _solverIterations: 12
   _contactOffset: 0.005
-  _ballRadius: 0.156
+  _ballRadius: 0.13
   _ballMass: 0.27
-  _palmSize: {x: 0.228, y: 0.312, z: 0.066}
+  _palmSize: {x: 0.24, y: 0.32, z: 0.07}
   _fingerLengthMultiplier: 1.5
   _showFingers: 1
-  _hitboxScale: 2.2
-  _hitboxDepthScale: 3.5
+  _hitboxScale: 2.6
+  _hitboxDepthScale: 6
   _showHitbox: 1
   _fieldLength: 220
   _fieldWidth: 28
@@ -323,9 +326,9 @@ MonoBehaviour:
   _maxBallSpeed: 38
   _buildNet: 1
   _netDistance: 4.5
-  _netHeight: 1.8
+  _netHeight: 1.2
   _netGapHeight: 0.4
-  _netBounciness: 0.95
+  _netBounciness: 0.6
   _throwsPerTurn: 5
   _resultHoldSeconds: 4
   _handSizeMin: 0.7

@@ -18,15 +18,30 @@ namespace HandVolley
         [Header("표시")]
         [Tooltip("점수 HUD, 공 디버그 패널, HandTracker 진단 텍스트를 한번에 켜고 끈다. " +
                  "화면 녹화할 때 꺼두면 깨끗하게 찍힌다. 시작 화면/결과 화면 자체는 꺼지지 않는다.")]
-        [SerializeField] private bool _showDebugText = true;
+        [SerializeField] private bool _showDebugText = false;
 
         [Header("배치")]
         [Tooltip("웹캠의 물리적 위치와 방향. 카메라가 바라보는 쪽이 +Z 가 된다.")]
         [SerializeField] private Vector3 _webcamPosition = new Vector3(0f, 1.25f, 0f);
         [SerializeField] private Vector3 _webcamEuler = new Vector3(0f, 0f, 0f);
 
-        [Header("손 회전 보정")]
+        [Header("거리 보정")]
         [Tooltip("HandTracker 는 Play 시점에 코드로 생기는 오브젝트라 씬에 미리 없다 — " +
+                 "여기서 미리 값을 맞춰 두면 Play 때마다 Hierarchy 에서 HandTracker 를 " +
+                 "따로 찾아 토글할 필요가 없다. 추정 깊이를 게임 공간 깊이로 리매핑: " +
+                 "z_game = (z_cam - pivot) * scale + pivot")]
+        [SerializeField] private float _depthPivot = 0.8f;
+        [Tooltip("깊이(앞뒤) 이동 반영 비율. 실제로 앞뒤로 움직인 만큼 게임 속 손도 더 크게 " +
+                 "움직이게 하려면 이 값을 올린다.")]
+        [SerializeField, Range(0f, 3f)] private float _depthScale = 1.6f;
+        [SerializeField] private Vector2 _depthClamp = new Vector2(0.35f, 1.8f);
+        [Tooltip("깊이 이동 방향을 반전. 실제로 손을 앞(카메라 쪽)으로 뻗었는데 게임 속 손이 " +
+                 "뒤로 물러나면 켠다.")]
+        [SerializeField] private bool _invertDepth = true;
+
+        [Header("손 회전 보정")]
+        [Tooltip("앞뒤 기울임(피치)이 실기기에서 과장되어 나오는 문제 보정. " +
+                 "HandTracker 는 Play 시점에 코드로 생기는 오브젝트라 씬에 미리 없다 — " +
                  "여기서 미리 값을 맞춰 두면 Play 때마다 Hierarchy 에서 HandTracker 를 " +
                  "따로 찾아 토글할 필요가 없다.")]
         [SerializeField] private bool _invertPalmNormal = false;
@@ -34,7 +49,6 @@ namespace HandVolley
         [SerializeField] private bool _invertPitch = true;
         [Tooltip("피치(앞뒤 기울임) 배율. 1보다 작게 잡으면 과장된 기울임을 눌러준다.")]
         [SerializeField, Range(0.2f, 1.5f)] private float _pitchGain = 0.4f;
-        [SerializeField] private bool _invertDepth = true;
 
         [Header("물리")]
         [Tooltip("기본 0.02 로는 빠른 스윙에서 반드시 관통이 발생한다. " +
@@ -46,15 +60,14 @@ namespace HandVolley
         [SerializeField] private float _contactOffset = 0.005f;
 
         [Header("치수 (실제 배구 규격)")]
-        [Tooltip("실제 배구공 반지름은 0.105m 지만, 화면에서 더 잘 보이고 맞히기도 " +
-                 "편하도록 키워 뒀다.")]
-        [SerializeField] private float _ballRadius = 0.156f;
+        [Tooltip("실제 배구공 반지름은 0.105m 지만, 처음 하는 사람도 맞히기 쉽도록 " +
+                 "조금 키워 뒀다.")]
+        [SerializeField] private float _ballRadius = 0.13f;
         [SerializeField] private float _ballMass = 0.27f;
         [Tooltip("손바닥 크기 (m). x=폭, y=길이, z=두께. 실제 성인 손바닥은 대략 0.10 x 0.17 x 0.03 이지만, " +
                  "화면에서는 더 커야 잘 보이고 치기도 편해서 실측보다 키워 뒀다. " +
-                 "손가락 두께도 이 값(z)에 비례해 자동으로 커진다. 히트박스도 이 값에 " +
-                 "비례하므로 팜을 키우면 판정 크기도 함께 커진다.")]
-        [SerializeField] private Vector3 _palmSize = new Vector3(0.228f, 0.312f, 0.066f);
+                 "손가락 두께도 이 값(z)에 비례해 자동으로 커진다.")]
+        [SerializeField] private Vector3 _palmSize = new Vector3(0.24f, 0.32f, 0.07f);
 
         [Tooltip("손가락 길이 배율. 1.0 이면 팜 길이에 비례한 기본 길이, 높일수록 손가락만 더 길어진다.")]
         [SerializeField] private float _fingerLengthMultiplier = 1.5f;
@@ -62,13 +75,13 @@ namespace HandVolley
         [Tooltip("손가락 시각 표현 추가 (콜라이더 없음 — 물리는 히트박스 하나로 처리)")]
         [SerializeField] private bool _showFingers = true;
 
-        [Tooltip("실제 충돌 판정 크기 배율 (좌우/상하). 보이는 손보다 크게 잡으면 훨씬 치기 쉬워진다.")]
-        [SerializeField] private float _hitboxScale = 2.2f;
+        [Tooltip("실제 충돌 판정 크기 배율 (좌우/상하). 보이는 손보다 크게 잡으면 훨씬 치기 쉬워진다. " +
+                 "난이도를 낮추려고 기본보다 키워 뒀다.")]
+        [SerializeField] private float _hitboxScale = 2.6f;
 
         [Tooltip("앞뒤(깊이) 방향 배율. 단일 카메라에서 가장 오차가 큰 축이라 따로 크게 잡는다. " +
-                 "손바닥 두께(Palm Size z)가 커진 만큼 실제 히트박스 두께도 같이 커져서 " +
-                 "너무 두꺼워졌던 것을 보정해 낮췄다.")]
-        [SerializeField] private float _hitboxDepthScale = 3.5f;
+                 "초심자는 깊이 감각이 특히 부정확하므로 더 넉넉히 잡았다.")]
+        [SerializeField] private float _hitboxDepthScale = 6.0f;
 
         [Tooltip("히트박스를 와이어프레임으로 표시. 기본은 꺼짐 — 켜면 손이 네모나게 보인다.")]
         [SerializeField] private bool _showHitbox = false;
@@ -92,20 +105,21 @@ namespace HandVolley
                  "받는 지점(z≈0.9~1.35) 사이 — 너무 가까우면 타격 직전 손 바로 앞에 " +
                  "네트가 겹쳐 보인다.")]
         [SerializeField] private float _netDistance = 4.5f;
-        [Tooltip("네트 높이 (공식 배구 규격은 2.43m 이지만 화면 구도상 낮춰 뒀다).")]
-        [SerializeField] private float _netHeight = 1.8f;
+        [Tooltip("네트 높이 (공식 배구 규격은 2.43m 이지만, 처음 하는 사람도 쉽게 넘기도록 " +
+                 "화면 구도상 필요한 것보다도 더 낮춰 뒀다).")]
+        [SerializeField] private float _netHeight = 1.2f;
         [Tooltip("그물이 시작되는 높이 (m). 이 아래는 뚫려 있어서(실제 네트처럼) 바닥에 " +
                  "떨어져 굴러가는 공이 네트에 막히지 않고 지나간다.")]
         [SerializeField] private float _netGapHeight = 0.4f;
-        [Tooltip("네트에 맞았을 때 반발 정도. 공 자체의 반발(0.75)보다 크게 잡아야 " +
-                 "확실히 튕겨나가는 느낌이 난다.")]
-        [SerializeField] private float _netBounciness = 0.95f;
+        [Tooltip("네트에 맞았을 때 반발 정도. 너무 높으면 살짝 스친 공도 엉뚱한 방향으로 " +
+                 "튕겨서 초심자에게 억울하게 느껴지므로 낮춰 뒀다.")]
+        [SerializeField] private float _netBounciness = 0.6f;
 
         [Header("게임 진행 (시작 화면 / 순위)")]
         [Tooltip("한 턴(한 사람 차례)당 서브 횟수. 다 소진하면 결과 화면으로 넘어간다.")]
         [SerializeField] private int _throwsPerTurn = 5;
         [Tooltip("결과 화면을 띄워 두는 시간 (초). 지나면 자동으로 시작 화면으로 돌아간다.")]
-        [SerializeField] private float _resultHoldSeconds = 4f;
+        [SerializeField] private float _resultHoldSeconds = 0f;
 
         [Header("손 크기 조절 범위")]
         [SerializeField] private float _handSizeMin = 0.7f;
@@ -129,7 +143,6 @@ namespace HandVolley
 
             WireTracker(origin, source, striker);
             BallLauncher launcher = WireLauncher(ball, striker, marker);
-            AiVolleyController aiVolley = WireAiVolley(ball, striker);
 
             // 카메라에 공/런처 연결.
             // "비활성 → 주입 → 활성화" 규칙을 이 오브젝트에도 지킨다 — 활성화 이전에
@@ -138,7 +151,7 @@ namespace HandVolley
             SetPrivate(chaseCam, "_launcher", launcher);
             chaseCam.gameObject.SetActive(true);
 
-            WireGameFlow(striker, launcher, aiVolley);
+            WireGameFlow(striker, launcher);
 
             int rend = striker.GetComponentsInChildren<Renderer>(true).Length;
             int coll = striker.GetComponentsInChildren<Collider>(true).Length;
@@ -198,7 +211,7 @@ namespace HandVolley
             cam.nearClipPlane = 0.05f;
             cam.farClipPlane = Mathf.Max(300f, _fieldLength * 2f);
             cam.clearFlags = CameraClearFlags.SolidColor;
-            cam.backgroundColor = new Color(0.09f, 0.11f, 0.16f);
+            cam.backgroundColor = new Color(0.82f, 0.89f, 0.97f);
             camGo.AddComponent<AudioListener>();
 
             var chase = camGo.AddComponent<BallChaseCamera>();
@@ -219,7 +232,7 @@ namespace HandVolley
             ground.name = "Ground";
             ground.transform.position = new Vector3(0f, 0f, _fieldLength * 0.5f - 3f);
             ground.transform.localScale = new Vector3(_fieldWidth / 10f, 1f, _fieldLength / 10f);
-            Tint(ground, new Color(0.15f, 0.32f, 0.26f));
+            Tint(ground, new Color(0.46f, 0.62f, 0.82f));
 
             // --- 거리 표시선 ---
             // 깊이를 읽을 수 있는 기준선을 깐다 (네트는 별도로 BuildNet 이 세운다).
@@ -239,15 +252,17 @@ namespace HandVolley
                 line.transform.position = new Vector3(0f, 0.012f, z);
                 line.transform.localScale = new Vector3(_fieldWidth * 0.85f,
                                                         0.02f, major ? 0.16f : 0.06f);
-                float b = major ? 0.95f : 0.45f;
-                Tint(line, new Color(b, b, b * 0.9f, 1f));
+                Color lineColor = major
+                    ? new Color(0.96f, 0.98f, 1f, 1f)
+                    : new Color(0.70f, 0.79f, 0.90f, 1f);
+                Tint(line, lineColor);
 
                 if (!major) continue;
 
-                // 양쪽에 기둥을 세워 거리감을 준다. 멀수록 붉게.
+                // 양쪽 거리 기둥도 한 톤의 블루그레이로 통일해 화면을 복잡하게 만들지 않는다.
                 float t = Mathf.Clamp01(z / _fieldLength);
-                Color postColor = Color.Lerp(new Color(0.45f, 0.85f, 0.55f),
-                                             new Color(0.95f, 0.35f, 0.25f), t);
+                Color postColor = Color.Lerp(new Color(0.35f, 0.52f, 0.72f),
+                                             new Color(0.25f, 0.39f, 0.60f), t);
                 for (int side = -1; side <= 1; side += 2)
                 {
                     var post = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -281,7 +296,7 @@ namespace HandVolley
             DestroyImmediate(origin.GetComponent<Collider>());
             origin.transform.position = new Vector3(0f, 0.014f, 0f);
             origin.transform.localScale = new Vector3(_fieldWidth * 0.9f, 0.02f, 0.24f);
-            Tint(origin, new Color(1f, 0.85f, 0.25f));
+            Tint(origin, new Color(0.96f, 0.98f, 1f));
         }
 
         /// <summary>
@@ -384,7 +399,7 @@ namespace HandVolley
             disc.transform.SetParent(go.transform, false);
             disc.transform.localScale = new Vector3(0.9f, 0.01f, 0.9f);
             disc.transform.localPosition = new Vector3(0f, 0.02f, 0f);
-            Tint(disc, new Color(1f, 0.35f, 0.2f, 1f));
+            Tint(disc, new Color(0.16f, 0.39f, 0.82f, 1f));
 
             var pole = GameObject.CreatePrimitive(PrimitiveType.Cube);
             pole.name = "Pole";
@@ -392,7 +407,7 @@ namespace HandVolley
             pole.transform.SetParent(go.transform, false);
             pole.transform.localScale = new Vector3(0.07f, 1.6f, 0.07f);
             pole.transform.localPosition = new Vector3(0f, 0.8f, 0f);
-            Tint(pole, new Color(1f, 0.35f, 0.2f, 1f));
+            Tint(pole, new Color(0.16f, 0.39f, 0.82f, 1f));
 
             go.SetActive(false);
             return go.transform;
@@ -445,11 +460,6 @@ namespace HandVolley
             rb.interpolation = RigidbodyInterpolation.Interpolate;
             // 빠른 공이 손이나 바닥을 뚫는 것을 막는 1차 방어선
             rb.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-
-            // 공기 저항 + 마그누스 효과. 이게 없으면 타격 직후 궤적이 일직선으로 뻗기만
-            // 하고 스핀이 시각적으로만 돌 뿐 궤적에 영향을 못 준다.
-            go.AddComponent<VolleyballAerodynamics>();
-
             return rb;
         }
 
@@ -463,7 +473,14 @@ namespace HandVolley
             go.transform.position = origin.position + origin.forward * 0.8f;
             go.SetActive(false);
 
-            var color = new Color(0.94f, 0.78f, 0.63f); // 살구빛 피부톤 — 모델링 없이도 손 느낌
+            var color = new Color(0.94f, 0.96f, 0.99f); // 미니멀 UI에 맞춘 밝은 글러브 톤
+
+            // --- 시각 전용 루트 ---
+            // 팜/손가락은 전부 이 아래에 둔다. 판정 히트박스는 여기 넣지 않고 Hand 루트에
+            // 직접 붙여서, HandStriker 가 타격 순간 이 루트만 살짝 밀어냈다 되돌리는 연출을
+            // 넣어도 판정 크기/위치에는 전혀 영향이 없게 분리해 둔다.
+            var visualRoot = new GameObject("VisualRoot");
+            visualRoot.transform.SetParent(go.transform, false);
 
             // --- 손바닥 (시각용) — Capsule 로 위/아래 끝을 둥글려 손바닥 윤곽에 가깝게 ---
             // Capsule 프리미티브 메시는 기본 높이가 지름의 2배(스케일 1일 때 높이 2, 지름 1)라,
@@ -473,7 +490,7 @@ namespace HandVolley
             var palm = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             palm.name = "Palm";
             DestroyImmediate(palm.GetComponent<Collider>());
-            palm.transform.SetParent(go.transform, false);
+            palm.transform.SetParent(visualRoot.transform, false);
             palm.transform.localScale = new Vector3(_palmSize.x, _palmSize.y * 0.5f, _palmSize.z);
             Tint(palm, color);
 
@@ -508,7 +525,7 @@ namespace HandVolley
                 for (int i = 0; i < offsetFrac.Length; i++)
                 {
                     float length = _palmSize.y * lengthFrac[i] * _fingerLengthMultiplier;
-                    BuildFingerChain(go.transform, $"Finger_{i}",
+                    BuildFingerChain(visualRoot.transform, $"Finger_{i}",
                         new Vector3(_palmSize.x * offsetFrac[i], _palmSize.y * 0.5f, 0f),
                         length * 0.58f, length * 0.42f,
                         thickness, thickness * 0.82f, 14f, color);
@@ -516,7 +533,7 @@ namespace HandVolley
 
                 // 엄지 — 밑동을 42° 틀어 놓은 뒤 그 방향으로 체인을 뻗는다.
                 var thumbRoot = new GameObject("ThumbRoot");
-                thumbRoot.transform.SetParent(go.transform, false);
+                thumbRoot.transform.SetParent(visualRoot.transform, false);
                 thumbRoot.transform.localPosition = new Vector3(_palmSize.x * 0.55f, _palmSize.y * 0.07f, 0f);
                 thumbRoot.transform.localRotation = Quaternion.Euler(0f, 0f, 42f);
                 float thumbLength = _palmSize.y * 0.33f * _fingerLengthMultiplier;
@@ -528,6 +545,7 @@ namespace HandVolley
             var striker = go.AddComponent<HandStriker>();
             SetPrivate(striker, "_ballLayer", (LayerMask)(1 << BallLayer));
             SetPrivate(striker, "_maxBallSpeed", _maxBallSpeed);
+            SetPrivate(striker, "_visualRoot", visualRoot.transform);
 
             var sizeController = go.AddComponent<HandSizeController>();
             SetPrivate(sizeController, "_min", _handSizeMin);
@@ -581,10 +599,6 @@ namespace HandVolley
             if (_useMediaPipe)
             {
                 var mp = go.AddComponent<MediaPipeHandSource>();
-                // 샘플 쪽 랜드마크 오버레이 표시 여부를 여기서 한 번 정해 둔다 — 샘플의
-                // HandLandmarkerRunner 가 Instance 를 통해 이 값을 읽어 오버레이 GameObject 를
-                // 켜고 끈다 (MediaPipeHandSource.Instance 를 쓰는 것과 같은 이유: 이 오브젝트는
-                // Play 시점에 코드로 생기므로 에디터에서 미리 연결해 둘 방법이 없다).
                 mp.ShowDebugLandmarks = _showDebugText;
                 return mp;
             }
@@ -603,11 +617,14 @@ namespace HandVolley
             SetPrivate(tracker, "_striker", striker);
             SetPrivate(tracker, "_trackingOrigin", origin);
             SetPrivate(tracker, "_logDiagnostics", _showDebugText);
+            SetPrivate(tracker, "_depthPivot", _depthPivot);
+            SetPrivate(tracker, "_depthScale", _depthScale);
+            SetPrivate(tracker, "_depthClamp", _depthClamp);
+            SetPrivate(tracker, "_invertDepth", _invertDepth);
             SetPrivate(tracker, "_invertPalmNormal", _invertPalmNormal);
             SetPrivate(tracker, "_invertPalmUp", _invertPalmUp);
             SetPrivate(tracker, "_invertPitch", _invertPitch);
             SetPrivate(tracker, "_pitchGain", _pitchGain);
-            SetPrivate(tracker, "_invertDepth", _invertDepth);
             go.SetActive(true);
         }
 
@@ -630,37 +647,8 @@ namespace HandVolley
             return launcher;
         }
 
-        /// <summary>
-        /// AI 1대1 모드용 시각 전용 손(콜라이더 없음)과 AiVolleyController 를 배선한다.
-        /// AI는 실제 물리 타격이 아니라 코드로 공 속도를 직접 바꾸므로, 이 손은
-        /// "보이기만" 하면 된다.
-        /// </summary>
-        private AiVolleyController WireAiVolley(Rigidbody ball, HandStriker striker)
-        {
-            var aiHandGo = GameObject.CreatePrimitive(PrimitiveType.Capsule);
-            aiHandGo.name = "AI Hand";
-            DestroyImmediate(aiHandGo.GetComponent<Collider>());
-            aiHandGo.transform.position = new Vector3(0f, 1.45f, _netDistance + 1.85f);
-            aiHandGo.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
-            aiHandGo.transform.localScale = new Vector3(0.24f, 0.10f, 0.16f);
-            Tint(aiHandGo, new Color(0.35f, 0.55f, 0.95f));
-            aiHandGo.SetActive(false);
-
-            var go = new GameObject("AiVolleyController");
-            go.SetActive(false);
-            var aiVolley = go.AddComponent<AiVolleyController>();
-            SetPrivate(aiVolley, "_ball", ball);
-            SetPrivate(aiVolley, "_playerHand", striker);
-            SetPrivate(aiVolley, "_aiHand", aiHandGo.transform);
-            SetPrivate(aiVolley, "_netZ", _netDistance);
-            SetPrivate(aiVolley, "_aiHitZ", _netDistance + 1.6f);
-            SetPrivate(aiVolley, "_ballRadius", _ballRadius);
-            go.SetActive(true);
-            return aiVolley;
-        }
-
         /// <summary>순위 저장소 + 시작 화면/결과 화면 상태 머신을 배선한다.</summary>
-        private void WireGameFlow(HandStriker striker, BallLauncher launcher, AiVolleyController aiVolley)
+        private void WireGameFlow(HandStriker striker, BallLauncher launcher)
         {
             var rankingGo = new GameObject("RankingStore");
             var ranking = rankingGo.AddComponent<RankingStore>();
@@ -673,7 +661,6 @@ namespace HandVolley
             SetPrivate(flow, "_launcher", launcher);
             SetPrivate(flow, "_ranking", ranking);
             SetPrivate(flow, "_handSize", handSize);
-            SetPrivate(flow, "_aiVolley", aiVolley);
             SetPrivate(flow, "_resultHoldSeconds", _resultHoldSeconds);
             SetPrivate(flow, "_showDebugText", _showDebugText);
             flowGo.SetActive(true);

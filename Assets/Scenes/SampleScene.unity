@@ -152,18 +152,19 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _useMediaPipe: 1
+  _showDebugText: 0
   _webcamPosition: {x: 0, y: 1.25, z: 0}
   _webcamEuler: {x: 0, y: 0, z: 0}
   _fixedTimestep: 0.01
   _solverIterations: 12
   _contactOffset: 0.005
-  _ballRadius: 0.156
+  _ballRadius: 0.13
   _ballMass: 0.27
-  _palmSize: {x: 0.228, y: 0.312, z: 0.066}
+  _palmSize: {x: 0.24, y: 0.32, z: 0.07}
   _fingerLengthMultiplier: 1.5
   _showFingers: 1
-  _hitboxScale: 2.2
-  _hitboxDepthScale: 3.5
+  _hitboxScale: 2.6
+  _hitboxDepthScale: 6
   _showHitbox: 0
   _fieldLength: 220
   _fieldWidth: 28
@@ -172,11 +173,11 @@ MonoBehaviour:
   _maxBallSpeed: 38
   _buildNet: 1
   _netDistance: 4.5
-  _netHeight: 1.8
+  _netHeight: 1.2
   _netGapHeight: 0.4
-  _netBounciness: 0.95
+  _netBounciness: 0.6
   _throwsPerTurn: 5
-  _resultHoldSeconds: 4
+  _resultHoldSeconds: 0
   _handSizeMin: 0.7
   _handSizeMax: 1.5
 --- !u!4 &1202291516
