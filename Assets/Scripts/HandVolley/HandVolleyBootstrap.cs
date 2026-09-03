@@ -232,7 +232,7 @@ namespace HandVolley
             ground.name = "Ground";
             ground.transform.position = new Vector3(0f, 0f, _fieldLength * 0.5f - 3f);
             ground.transform.localScale = new Vector3(_fieldWidth / 10f, 1f, _fieldLength / 10f);
-            Tint(ground, new Color(0.46f, 0.62f, 0.82f));
+            Tint(ground, new Color(0.12f, 0.25f, 0.65f));
 
             // --- 거리 표시선 ---
             // 깊이를 읽을 수 있는 기준선을 깐다 (네트는 별도로 BuildNet 이 세운다).
@@ -253,16 +253,16 @@ namespace HandVolley
                 line.transform.localScale = new Vector3(_fieldWidth * 0.85f,
                                                         0.02f, major ? 0.16f : 0.06f);
                 Color lineColor = major
-                    ? new Color(0.96f, 0.98f, 1f, 1f)
-                    : new Color(0.70f, 0.79f, 0.90f, 1f);
+                    ? new Color(0.25f, 0.45f, 0.85f, 1f)
+                    : new Color(0.15f, 0.30f, 0.70f, 1f);
                 Tint(line, lineColor);
 
                 if (!major) continue;
 
-                // 양쪽 거리 기둥도 한 톤의 블루그레이로 통일해 화면을 복잡하게 만들지 않는다.
+                // 양쪽 거리 기둥도 한 톤의 다른 파랑색으로 통일해 화면을 복잡하게 만들지 않는다.
                 float t = Mathf.Clamp01(z / _fieldLength);
-                Color postColor = Color.Lerp(new Color(0.35f, 0.52f, 0.72f),
-                                             new Color(0.25f, 0.39f, 0.60f), t);
+                Color postColor = Color.Lerp(new Color(0.10f, 0.20f, 0.60f),
+                                             new Color(0.08f, 0.15f, 0.50f), t);
                 for (int side = -1; side <= 1; side += 2)
                 {
                     var post = GameObject.CreatePrimitive(PrimitiveType.Cube);
@@ -296,7 +296,7 @@ namespace HandVolley
             DestroyImmediate(origin.GetComponent<Collider>());
             origin.transform.position = new Vector3(0f, 0.014f, 0f);
             origin.transform.localScale = new Vector3(_fieldWidth * 0.9f, 0.02f, 0.24f);
-            Tint(origin, new Color(0.96f, 0.98f, 1f));
+            Tint(origin, new Color(0.25f, 0.45f, 0.85f));
         }
 
         /// <summary>
