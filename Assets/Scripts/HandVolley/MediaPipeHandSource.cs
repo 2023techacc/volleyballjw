@@ -40,6 +40,7 @@
 
 using System;
 using UnityEngine;
+using HandLandmarkerRunner = Mediapipe.Unity.Sample.HandLandmarkDetection.HandLandmarkerRunner;
 
 #if HANDVOLLEY_MEDIAPIPE
 using Mediapipe.Tasks.Vision.HandLandmarker;
@@ -105,6 +106,16 @@ namespace HandVolley
         /// 실제로 뭐가 인식되는지 눈으로 확인할 수 있게 한다.
         /// </summary>
         public bool ShowDebugLandmarks { get; set; }
+
+        /// <summary>
+        /// HandVolley 연결: 게임 설정 화면의 카메라 번호 조절 UI 가 쓰는 얇은 창구.
+        /// 실제 웹캠 열기/닫기는 전부 HandLandmarkerRunner 가 담당하고, 여긴 그쪽으로
+        /// 그대로 넘겨주기만 한다. HandLandmarkerRunner.Instance 가 없으면(마우스 모드,
+        /// 또는 아직 Bootstrap 대기 중) 안전하게 아무 것도 하지 않는다.
+        /// </summary>
+        public string[] AvailableCameraNames => HandLandmarkerRunner.Instance?.AvailableCameraNames;
+        public int CameraIndex => HandLandmarkerRunner.Instance?.WebcamIndex ?? -1;
+        public void SetCameraIndex(int index) => HandLandmarkerRunner.Instance?.SwitchWebcam(index);
 
         private void Awake() => Instance = this;
         private void OnDestroy()

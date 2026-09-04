@@ -29,12 +29,17 @@ namespace HandVolley
 
         [Header("메뉴 시점")]
         [Tooltip("시작 화면에서 쓰는 카메라 위치 (TrackingOrigin 기준). 플레이 시점보다 " +
-                 "높고 뒤로 물러나 코트 전경이 보이게 한다 — 시작 화면과 게임 화면이 " +
-                 "'다른 화면'으로 읽히게 만드는 가장 큰 장치.")]
-        [SerializeField] private Vector3 _menuViewOffset = new Vector3(0f, 1.35f, -3.6f);
+                 "옆으로 비켜서고 살짝 더 가까이 두어 '앵글 있는 스틸컷'처럼 보이게 한다. " +
+                 "시작을 누르면 플레이 시점(정면·더 뒤)으로 물러나며 전환돼 " +
+                 "시작 화면과 게임 화면이 '다른 화면'으로 읽히게 만드는 가장 큰 장치.")]
+        [SerializeField] private Vector3 _menuViewOffset = new Vector3(1.7f, 1.15f, -0.5f);
         [SerializeField] private float _menuFov = 55f;
         [Tooltip("메뉴 시점에서 아래로 내려다보는 각도 (도).")]
-        [SerializeField] private float _menuViewPitchDeg = 14f;
+        [SerializeField] private float _menuViewPitchDeg = 10f;
+        [Tooltip("메뉴 시점에서 좌우로 트는 각도 (도). 0 이면 정면. 옆에서 코트를 " +
+                 "바라보는 각진 구도를 만든다 — 부호는 _menuViewOffset.x 와 같은 " +
+                 "쪽으로 돌아야 카메라가 코트 쪽을 바라본다.")]
+        [SerializeField] private float _menuViewYawDeg = -26f;
 
         [Header("추적 시점")]
         [Tooltip("공 기준 뒤/위 거리")]
@@ -92,10 +97,11 @@ namespace HandVolley
 
         private Vector3 ViewOffset => _menuView ? _menuViewOffset : _playerViewOffset;
         private float ViewPitch => _menuView ? _menuViewPitchDeg : _playerViewPitchDeg;
+        private float ViewYaw => _menuView ? _menuViewYawDeg : 0f;
         private float ViewFov => _menuView ? _menuFov : _playerFov;
 
         private Quaternion ViewRotation() =>
-            _trackingOrigin.rotation * Quaternion.Euler(ViewPitch, 0f, 0f);
+            _trackingOrigin.rotation * Quaternion.Euler(ViewPitch, ViewYaw, 0f);
 
         private void SnapToCurrentView()
         {

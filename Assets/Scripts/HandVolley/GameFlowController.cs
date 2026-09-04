@@ -40,7 +40,6 @@ namespace HandVolley
         private float _resultTimer;
         private int _lastTurnScore;
         private float _lastTurnBestDistance;
-        private int _lastTurnRallies;
         private int _lastTurnRank;
         private string _lastTurnBucket;
         private bool _isPractice;
@@ -174,7 +173,6 @@ namespace HandVolley
         {
             _lastTurnScore = score;
             _lastTurnBestDistance = bestDistance;
-            _lastTurnRallies = _launcher != null ? _launcher.TurnRallies : 0;
 
             if (!_isPractice && _ranking != null)
             {
@@ -302,7 +300,7 @@ namespace HandVolley
             }
 
             bool tracking = HandTracker.Instance != null && HandTracker.Instance.IsTracking;
-            var chip = new Rect(1256f, 22f, 304f, 42f);
+            var chip = new Rect(MinimalGui.ReferenceWidth - 344f, 22f, 304f, 42f);
             MinimalGui.PillFill(chip, new Color(1f, 1f, 1f, 0.12f));
             MinimalGui.CircleFill(new Rect(chip.x + 20f, chip.y + 17f, 9f, 9f),
                 tracking ? MinimalGui.Mint : new Color(0.95f, 0.66f, 0.23f, 1f));
@@ -317,13 +315,13 @@ namespace HandVolley
         /// </summary>
         private void DrawTrackingPreview()
         {
-            var card = new Rect(1180f, 168f, 300f, 214f);
+            var card = new Rect(MinimalGui.ReferenceWidth - 420f, 168f, 300f, 214f);
             MinimalGui.RoundFill(card, new Color(0.047f, 0.145f, 0.298f, 0.92f));
 
             HandTracker tracker = HandTracker.Instance;
             bool tracking = tracker != null && tracker.IsTracking;
 
-            var badge = new Rect(card.x + 16f, card.y + 16f, 150f, 32f);
+            var badge = new Rect(card.x + 16f, card.y + 16f, 190f, 32f);
             MinimalGui.PillFill(badge, new Color(0.016f, 0.071f, 0.157f, 0.62f));
             MinimalGui.CircleFill(new Rect(badge.x + 14f, badge.y + 12f, 8f, 8f),
                 tracking ? MinimalGui.Mint : new Color(0.95f, 0.66f, 0.23f, 1f));
@@ -362,9 +360,9 @@ namespace HandVolley
                 if (top.Count > 0) best = top[0].score;
             }
 
-            GUI.Label(new Rect(1180f, 762f, 280f, 24f), "오늘의 1위",
+            GUI.Label(new Rect(MinimalGui.ReferenceWidth - 420f, 762f, 280f, 24f), "오늘의 1위",
                 MinimalGui.Label(16, MinimalGui.OnNavyDim, TextAnchor.MiddleRight));
-            GUI.Label(new Rect(1180f, 788f, 280f, 42f),
+            GUI.Label(new Rect(MinimalGui.ReferenceWidth - 420f, 788f, 280f, 42f),
                 best > 0 ? $"{best:N0} 점" : "기록 없음",
                 MinimalGui.Label(30, Color.white, TextAnchor.MiddleRight, FontStyle.Bold));
         }
@@ -408,7 +406,9 @@ namespace HandVolley
                 MinimalGui.Label(88, MinimalGui.Accent, TextAnchor.MiddleLeft, FontStyle.Bold));
 
             GUI.color = Color.white;
-            float edgeX = Mathf.Lerp(1780f, 190f, e);
+            // 시작 지점은 화면 폭 + 여유만큼 오른쪽 밖에 둬서, 화면이 넓어져도
+            // 와이프가 처음부터 보이지 않고 완전히 밖에서 들어오게 한다.
+            float edgeX = Mathf.Lerp(MinimalGui.ReferenceWidth + 180f, 190f, e);
             DrawWipeBand(edgeX, 2600f, MinimalGui.NavyDeep);
             DrawWipeBand(edgeX - 54f, 30f, MinimalGui.Accent);
             DrawWipeBand(edgeX - 106f, 16f, MinimalGui.AccentSoft);
@@ -451,7 +451,7 @@ namespace HandVolley
             int remaining = Mathf.Clamp(Mathf.CeilToInt(CountdownSeconds - _stateTime), 1, 3);
             float withinSecond = 1f - Mathf.Repeat(_stateTime, 1f);
 
-            var ring = new Rect(640f, 240f, 320f, 320f);
+            var ring = new Rect((MinimalGui.ReferenceWidth - 320f) * 0.5f, 240f, 320f, 320f);
             MinimalGui.CircleFill(ring, new Color(0.027f, 0.102f, 0.220f, 0.55f));
             MinimalGui.RingFill(ring, new Color(1f, 1f, 1f, 0.18f));
             DrawCountdownDots(ring, withinSecond);
@@ -462,11 +462,12 @@ namespace HandVolley
             GUI.Label(ring, remaining.ToString(),
                 MinimalGui.CenterLabel(size, Color.white, FontStyle.Bold));
 
-            GUI.Label(new Rect(500f, 596f, 600f, 40f), "손을 화면 안에 들어오게 하세요",
+            float readyTextX = (MinimalGui.ReferenceWidth - 600f) * 0.5f;
+            GUI.Label(new Rect(readyTextX, 596f, 600f, 40f), "손을 화면 안에 들어오게 하세요",
                 MinimalGui.CenterLabel(30, MinimalGui.OnNavy, FontStyle.Bold));
 
             bool tracking = HandTracker.Instance != null && HandTracker.Instance.IsTracking;
-            GUI.Label(new Rect(500f, 646f, 600f, 30f),
+            GUI.Label(new Rect(readyTextX, 646f, 600f, 30f),
                 tracking ? "손 인식됨 · 준비 완료" : "손이 안 보여요 — 카메라 앞으로",
                 MinimalGui.CenterLabel(19, tracking ? MinimalGui.Mint
                                                     : new Color(0.95f, 0.66f, 0.23f, 1f),
@@ -506,7 +507,8 @@ namespace HandVolley
             GUI.DrawTexture(new Rect(0f, 0f, MinimalGui.ReferenceWidth, MinimalGui.ReferenceHeight),
                             MinimalGui.OverlayTexture, ScaleMode.StretchToFill, true);
 
-            var card = new Rect(510f, 118f + Mathf.Lerp(24f, 0f, e), 580f, 664f);
+            var card = new Rect((MinimalGui.ReferenceWidth - 580f) * 0.5f,
+                                118f + Mathf.Lerp(24f, 0f, e), 580f, 664f);
             MinimalGui.RoundFill(card, new Color(1f, 1f, 1f, 0.97f));
 
             GUI.Label(new Rect(card.x, card.y + 36f, card.width, 30f),
@@ -525,12 +527,11 @@ namespace HandVolley
                             new Color(0.890f, 0.925f, 0.976f, 1f));
 
             DrawResultRow(card, 322f, "최고 비거리", $"{_lastTurnBestDistance:F1} m", true);
-            DrawResultRow(card, 374f, "성공 랠리", $"{_lastTurnRallies} 회", false);
 
             string rankValue = _isPractice
                 ? "기록 안 함"
                 : _lastTurnRank > 0 ? $"{_lastTurnRank} 위" : "—";
-            DrawResultRow(card, 426f, _isPractice ? "연습 기록" : "오늘 순위", rankValue, false);
+            DrawResultRow(card, 374f, _isPractice ? "연습 기록" : "오늘 순위", rankValue, false);
 
             var primary = new Rect(card.x + 44f, card.y + 500f, card.width - 88f, 78f);
             if (MinimalGui.PillButton(primary, _isPractice ? "실전 시작" : "다시 하기", 26,
@@ -568,7 +569,7 @@ namespace HandVolley
         // ------------------------------ 패널 ------------------------------ //
 
         /// <summary>시작 화면 우측 패널의 공통 자리. 하단 특징 바(y=730) 위에서 끝난다.</summary>
-        private static Rect PanelRect => new Rect(1112f, 140f, 400f, 500f);
+        private static Rect PanelRect => new Rect(MinimalGui.ReferenceWidth - 488f, 140f, 400f, 500f);
 
         private void DrawHelpPanel()
         {
@@ -647,7 +648,9 @@ namespace HandVolley
 
         private void DrawSettingsPanel()
         {
-            Rect panel = PanelRect;
+            // 카메라 번호 조절이 들어가면서 기존 카드 높이(500)로는 모자라 늘렸다 —
+            // 다만 하단 특징 바(y=730)를 넘으면 안 되므로 580이 사실상 상한이다.
+            Rect panel = new Rect(PanelRect.x, PanelRect.y, PanelRect.width, 580f);
             MinimalGui.DrawCard(panel);
 
             GUI.Label(new Rect(panel.x + 28f, panel.y + 24f, panel.width - 56f, 42f), "설정",
@@ -665,14 +668,58 @@ namespace HandVolley
                 MinimalGui.Label(18, MinimalGui.Accent, TextAnchor.MiddleRight, FontStyle.Bold));
 
             DrawDepthCalibrationSection(panel);
+            DrawCameraSection(panel);
 
             string debugText = _showDebugText ? "디버그 정보  ON" : "디버그 정보  OFF";
-            if (GUI.Button(new Rect(panel.x + 28f, panel.y + 420f, panel.width - 56f, 44f),
+            if (GUI.Button(new Rect(panel.x + 28f, panel.y + 522f, panel.width - 56f, 40f),
                            debugText, MinimalGui.SecondaryButton))
             {
                 _showDebugText = !_showDebugText;
                 if (_launcher != null) _launcher.SetBallDebugVisible(_showDebugText);
+                // 웹캠 화면 + 손 랜드마크 오버레이도 같이 켜고 끈다 — MediaPipe 모드일
+                // 때만 존재하므로(마우스 모드는 Instance 가 null) 안전하게 무시된다.
+                if (MediaPipeHandSource.Instance != null)
+                    MediaPipeHandSource.Instance.ShowDebugLandmarks = _showDebugText;
             }
+        }
+
+        /// <summary>
+        /// 카메라 번호 조절 UI. HandLandmarkerRunner 는 씬에 미리 있는 오브젝트라 인스펙터로도
+        /// 연결할 수 있지만, MediaPipeHandSource.Instance 를 거쳐서 접근한다 — 마우스
+        /// 모드에서는 Instance 자체가 없어서 이쪽 코드가 통째로 조용히 무력화되게 하기 위함.
+        /// </summary>
+        private void DrawCameraSection(Rect panel)
+        {
+            GUI.Label(new Rect(panel.x + 28f, panel.y + 382f, panel.width - 56f, 26f), "카메라 번호",
+                MinimalGui.Label(17, MinimalGui.Muted, TextAnchor.MiddleLeft));
+
+            var mp = MediaPipeHandSource.Instance;
+            int index = mp != null ? mp.CameraIndex : -1;
+            string[] names = mp != null ? mp.AvailableCameraNames : null;
+            int count = names?.Length ?? 0;
+            // 총 개수를 같이 보여준다 — USB 캠이 인터페이스 2개로 잡혀 이름이 같은 항목이
+            // 두 번 뜨는 장치도 있어서, "몇 대가 잡혔는지"가 번호만 보는 것보다 더 유용하다.
+            string current = index < 0
+                ? "마우스 모드"
+                : (names != null && index < names.Length
+                    ? $"{index + 1} / {count}   {names[index]}"
+                    : $"{index}번");
+
+            GUI.Label(new Rect(panel.x + 28f, panel.y + 410f, panel.width - 56f, 28f), current,
+                MinimalGui.CenterLabel(17, MinimalGui.Ink, FontStyle.Bold));
+
+            if (GUI.Button(new Rect(panel.x + 28f, panel.y + 444f, 165f, 46f), "◀  이전 카메라",
+                           MinimalGui.SecondaryButton) && mp != null && index > 0)
+                mp.SetCameraIndex(index - 1);
+
+            bool hasNext = names != null && index >= 0 && index < names.Length - 1;
+            if (GUI.Button(new Rect(panel.x + 207f, panel.y + 444f, 165f, 46f), "다음 카메라  ▶",
+                           MinimalGui.SecondaryButton) && hasNext)
+                mp.SetCameraIndex(index + 1);
+
+            GUI.Label(new Rect(panel.x + 28f, panel.y + 494f, panel.width - 56f, 20f),
+                "번호를 바꾸면 카메라가 잠깐 재시작돼요",
+                MinimalGui.CenterLabel(12, MinimalGui.Muted));
         }
 
         /// <summary>

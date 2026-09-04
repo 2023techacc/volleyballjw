@@ -13,8 +13,16 @@ namespace HandVolley
     /// </summary>
     public static class MinimalGui
     {
-        public const float ReferenceWidth = 1600f;
         public const float ReferenceHeight = 900f;
+
+        /// <summary>
+        /// 화면 실제 가로세로 비율에 맞춘 가로 기준값. 세로(900)는 고정하고 가로만
+        /// 늘어나므로, 화면이 16:9보다 넓어도 레터박스(빈 여백) 없이 꽉 채운다.
+        /// 오른쪽/가운데 정렬 요소는 이 값을 기준으로 위치를 계산해야 화면 폭이
+        /// 바뀌어도 계속 오른쪽 끝/가운데에 붙는다.
+        /// </summary>
+        public static float ReferenceWidth =>
+            ReferenceHeight * Mathf.Max(Screen.width, 1) / Mathf.Max(Screen.height, 1);
 
         public static readonly Color Accent = new Color(0.16f, 0.39f, 0.82f, 1f);
         public static readonly Color AccentHover = new Color(0.20f, 0.46f, 0.92f, 1f);
@@ -77,10 +85,10 @@ namespace HandVolley
         public static Matrix4x4 BeginScaled()
         {
             Matrix4x4 old = GUI.matrix;
-            float scale = Mathf.Min(Screen.width / ReferenceWidth, Screen.height / ReferenceHeight);
-            float x = (Screen.width - ReferenceWidth * scale) * 0.5f;
-            float y = (Screen.height - ReferenceHeight * scale) * 0.5f;
-            GUI.matrix = Matrix4x4.TRS(new Vector3(x, y, 0f), Quaternion.identity,
+            // ReferenceWidth 가 항상 현재 화면 비율에 맞춰 계산되므로 세로 기준
+            // 스케일 하나만 적용하면 가로/세로 모두 화면을 정확히 채운다 (레터박스 없음).
+            float scale = Screen.height / ReferenceHeight;
+            GUI.matrix = Matrix4x4.TRS(Vector3.zero, Quaternion.identity,
                                       new Vector3(scale, scale, 1f));
             return old;
         }

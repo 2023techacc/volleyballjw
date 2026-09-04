@@ -96,11 +96,7 @@ namespace HandVolley
         private int _turnThrows;
         private int _turnScore;
         private float _turnBestDistance;
-        private int _turnRallies;
         private float _hudAlpha = 1f;
-
-        /// <summary>이번 턴에서 공을 실제로 쳐낸 횟수. 결과 화면의 "성공 랠리".</summary>
-        public int TurnRallies => _turnRallies;
 
         /// <summary>이번 턴에서 소진한 서브 수 / 전체 서브 수 (0~1). 게임 HUD 의 진행 바.</summary>
         public float TurnProgress =>
@@ -127,7 +123,6 @@ namespace HandVolley
             _turnThrows = 0;
             _turnScore = 0;
             _turnBestDistance = 0f;
-            _turnRallies = 0;
             _sessionActive = true;
             ScheduleServe(0.3f);
         }
@@ -176,7 +171,6 @@ namespace HandVolley
         {
             if (!_inPlay) return;
             _rally++;
-            _turnRallies++;
             _lastActivityTime = Time.time;
             _status = $"타격 {velocity.magnitude:F1} m/s";
         }
@@ -347,28 +341,30 @@ namespace HandVolley
             {
                 // 게임 화면은 시작 화면과 정반대의 톤을 쓴다 — 밝은 카드가 아니라
                 // 코트 위에 얹히는 어두운 칩. 상단바·히어로는 전부 사라지고 값 3개만 남는다.
+                float refW = MinimalGui.ReferenceWidth;
                 DrawHudStat(new Rect(40, 106, 210, 104), "점수", _turnScore.ToString("N0"));
-                DrawHudStat(new Rect(695, 106, 210, 104), "남은 서브",
+                DrawHudStat(new Rect((refW - 210f) * 0.5f, 106, 210, 104), "남은 서브",
                             Mathf.Max(0, _throwsPerTurn - _turnThrows).ToString());
-                DrawHudStat(new Rect(1350, 106, 210, 104), "최고 비거리", $"{_turnBestDistance:F1} m");
+                DrawHudStat(new Rect(refW - 40f - 210f, 106, 210, 104), "최고 비거리",
+                            $"{_turnBestDistance:F1} m");
 
                 DrawEscapeHint();
 
                 // 현재 상태는 화면 가운데 알약 하나로만 표시한다.
-                var statusChip = new Rect(560, 250, 480, 64);
+                var statusChip = new Rect((refW - 480f) * 0.5f, 250, 480, 64);
                 MinimalGui.PillFill(statusChip, MinimalGui.HudChip);
                 GUI.Label(statusChip, _status,
                     MinimalGui.CenterLabel(26, Color.white, FontStyle.Bold));
 
-                // 공을 친 뒤에는 실시간 비거리 / 랠리를 그 아래 작은 알약으로 덧붙인다.
+                // 공을 친 뒤에는 실시간 비거리를 그 아래 작은 알약으로 덧붙인다.
                 if (_inPlay && _ball != null && _rally > 0)
                 {
                     string extra = _bounces > 0 ? $"  ·  바운드 {_bounces}" : "";
-                    var subChip = new Rect(640, 330, 320, 44);
+                    var subChip = new Rect((refW - 320f) * 0.5f, 330, 320, 44);
                     MinimalGui.PillFill(subChip, new Color(MinimalGui.HudChip.r, MinimalGui.HudChip.g,
                                                            MinimalGui.HudChip.b, 0.62f));
                     GUI.Label(subChip,
-                              $"{Mathf.Max(0f, _ball.position.z):F1} m  ·  랠리 {_rally}회{extra}",
+                              $"{Mathf.Max(0f, _ball.position.z):F1} m{extra}",
                               MinimalGui.CenterLabel(19, MinimalGui.OnNavy, FontStyle.Bold));
                 }
 
@@ -409,9 +405,10 @@ namespace HandVolley
         /// <summary>하단 중앙의 턴 진행 바 — 이번 턴에서 서브를 얼마나 썼는지.</summary>
         private void DrawTurnProgress()
         {
-            GUI.Label(new Rect(600, 790, 400, 24), "턴 진행",
+            float x = (MinimalGui.ReferenceWidth - 400f) * 0.5f;
+            GUI.Label(new Rect(x, 790, 400, 24), "턴 진행",
                 MinimalGui.CenterLabel(16, new Color(0.749f, 0.847f, 0.961f, 1f), FontStyle.Bold));
-            MinimalGui.ProgressBar(new Rect(600, 820, 400, 12), TurnProgress,
+            MinimalGui.ProgressBar(new Rect(x, 820, 400, 12), TurnProgress,
                                    new Color(1f, 1f, 1f, 0.20f), MinimalGui.Mint);
         }
 
@@ -424,7 +421,7 @@ namespace HandVolley
             HandTracker tracker = HandTracker.Instance;
             bool tracking = tracker != null && tracker.IsTracking;
 
-            var card = new Rect(1310, 744, 250, 96);
+            var card = new Rect(MinimalGui.ReferenceWidth - 40f - 250f, 744, 250, 96);
             MinimalGui.RoundFill(card, MinimalGui.HudChip);
 
             var dot = new Rect(card.x + 20, card.y + 30, 12, 12);
@@ -441,7 +438,7 @@ namespace HandVolley
         private void DrawDebugPanel()
         {
             // 우하단은 손 인식 카드가 차지하므로 그 위로 올린다.
-            Rect panel = new Rect(1240, 556, 324, 170);
+            Rect panel = new Rect(MinimalGui.ReferenceWidth - 36f - 324f, 556, 324, 170);
             GUI.Box(panel, GUIContent.none, MinimalGui.DarkChip);
 
             Vector3 bp = _ball.position;

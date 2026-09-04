@@ -297,7 +297,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   _useMediaPipe: 1
-  _showDebugText: 1
+  _showDebugText: 0
   _webcamPosition: {x: 0, y: 1.25, z: 0}
   _webcamEuler: {x: 0, y: 0, z: 0}
   _depthPivot: 0.8
@@ -320,17 +320,17 @@ MonoBehaviour:
   _hitboxDepthScale: 6
   _showHitbox: 1
   _fieldLength: 220
-  _fieldWidth: 28
+  _fieldWidth: 14
   _markerSpacing: 10
   _postSpacing: 25
   _maxBallSpeed: 38
   _buildNet: 1
   _netDistance: 4.5
   _netHeight: 1.2
-  _netGapHeight: 0.4
+  _netGapHeight: 0.55
   _netBounciness: 0.6
   _throwsPerTurn: 5
-  _resultHoldSeconds: 4
+  _resultHoldSeconds: 0
   _handSizeMin: 0.7
   _handSizeMax: 1.5
 --- !u!4 &846697193

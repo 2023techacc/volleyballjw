@@ -38,11 +38,24 @@ namespace HandVolley
         [SerializeField] private float _maxBallSpeed = 22f;
         [SerializeField] private float _hitCooldown = 0.12f;
 
+        [Tooltip("이 속도를 넘어서는 순간부터는 초과분을 완만하게 눌러준다 (m/s). " +
+                 "손이 아주 빠르게 움직여도 공이 매번 최대 속도로만 튀어나가는 느낌을 " +
+                 "줄이기 위한 것 — Max Ball Speed 의 하드 클램프보다 먼저 적용된다.")]
+        [SerializeField] private float _softSpeedKnee = 15f;
+        [Tooltip("소프트 니(Soft Speed Knee) 이후 초과 속도에 곱하는 비율. 낮을수록 " +
+                 "빠른 스윙일수록 더 많이 눌러준다. 1이면 압축 없음(끔).")]
+        [SerializeField, Range(0f, 1f)] private float _overspeedCompression = 0.4f;
+
         [Header("초보자 보정")]
         [Tooltip("타격 결과의 좌우(x) 성분을 일부 눌러 정면(코트 안쪽)으로 당겨준다. " +
                  "0이면 끔, 1이면 완전히 정면으로만 나간다. 손 각도가 살짝 빗나가도 " +
                  "공이 코트 밖으로 새는 걸 줄여 처음 하는 사람도 쉽게 넘길 수 있게 한다.")]
         [SerializeField, Range(0f, 1f)] private float _aimAssist = 0.35f;
+
+        [Tooltip("타격 결과의 z(앞) 성분이 이보다 작을 때 끌어올리는 최소 전진 속도 (m/s). " +
+                 "upwardBias 와 같은 방식 — 손이 뒤를 심하게 보고 있지 않으면 공이 뒤로 " +
+                 "넘어가 0점 처리되는 일을 줄여준다.")]
+        [SerializeField] private float _forwardBias = 3.0f;
 
         [Header("관통 방지")]
         [Tooltip("공이 속한 레이어. SweepTestAll/OverlapSphere 안전망이 이 레이어만 검사한다.")]
@@ -289,8 +302,24 @@ namespace HandVolley
             if (_aimAssist > 0f)
                 result.x = Mathf.Lerp(result.x, 0f, _aimAssist);
 
+            // 뒤로 넘어가는 것 방지 — upwardBias 와 같은 방식. 손이 뒤(카메라 쪽)를
+            // 심하게 보고 있지 않으면(n.z > -0.5) 최소 전진 속도만 보장한다.
+            if (n.z > -0.5f && result.z < _forwardBias)
+                result.z = Mathf.Lerp(result.z, _forwardBias, 0.75f);
+
             if (result.magnitude < _minBallSpeed)
                 result = result.normalized * _minBallSpeed;
+
+            // 소프트 니 — 아주 빠른 스윙이 매번 최대 속도로만 박히는 느낌을 줄인다.
+            // 니 이하는 그대로, 니를 넘는 초과분만 압축한다 (하드 클램프보다 부드럽다).
+            float speed = result.magnitude;
+            if (speed > _softSpeedKnee)
+            {
+                float excess = speed - _softSpeedKnee;
+                float compressed = _softSpeedKnee + excess * _overspeedCompression;
+                result = result * (compressed / speed);
+            }
+
             result = Vector3.ClampMagnitude(result, _maxBallSpeed);
 
             BallPhysics.SetVelocity(ball, result);

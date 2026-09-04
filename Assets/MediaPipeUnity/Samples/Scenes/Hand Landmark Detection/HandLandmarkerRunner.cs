@@ -33,6 +33,41 @@ namespace Mediapipe.Unity.Sample.HandLandmarkDetection
 
     public readonly HandLandmarkDetectionConfig config = new HandLandmarkDetectionConfig();
 
+    /// <summary>
+    /// HandVolley 연결: 게임 설정 화면에서 카메라를 바꿀 수 있도록 두는 정적 참조.
+    /// HandTracker/MediaPipeHandSource 와 같은 패턴 — 이 오브젝트는 씬에 미리 배치된 게
+    /// 아니라 Play 시점에 생기므로 인스펙터 드래그 연결이 불가능하다.
+    /// </summary>
+    public static HandLandmarkerRunner Instance { get; private set; }
+
+    private void Awake() => Instance = this;
+    private void OnDestroy()
+    {
+      if (Instance == this) Instance = null;
+    }
+
+    /// <summary>HandVolley 연결: 지금 선택된 웹캠 장치 번호.</summary>
+    public int WebcamIndex => _webcamDeviceIndex;
+
+    /// <summary>
+    /// HandVolley 연결: Run() 시작 시 콘솔에 찍는 것과 같은 웹캠 이름 목록. Run() 이 아직
+    /// 한 번도 실행되지 않았으면(Bootstrap 대기 중) null.
+    /// </summary>
+    public string[] AvailableCameraNames => (ImageSourceProvider.ImageSource as WebCamSource)?.sourceCandidateNames;
+
+    /// <summary>
+    /// HandVolley 연결: 게임 설정 화면의 카메라 번호 버튼이 호출한다. 장치 번호를 바꾸고
+    /// 전체 파이프라인(웹캠 캡처 + MediaPipe 추론)을 재시작한다. VisionTaskApiRunner.Play()
+    /// 가 이미 "돌고 있으면 먼저 Stop() 한다"는 로직을 갖고 있으므로, 여기서는 필드 값만
+    /// 바꾸고 Play() 를 다시 부르면 된다 — Run() 이 처음부터 다시 실행되며 새 번호로
+    /// SelectSource 를 호출한다.
+    /// </summary>
+    public void SwitchWebcam(int index)
+    {
+      _webcamDeviceIndex = index;
+      Play();
+    }
+
     public override void Stop()
     {
       base.Stop();
@@ -94,7 +129,8 @@ namespace Mediapipe.Unity.Sample.HandLandmarkDetection
 
       // HandVolley 연결: HandVolleyBootstrap 의 Show Debug Text 설정에 맞춰 웹캠 화면과
       // 랜드마크 오버레이(손 골격 표시)를 함께 켜고 끈다. Instance 가 없으면(마우스 모드 등)
-      // 건드리지 않고 씬에 있던 상태 그대로 둔다.
+      // 건드리지 않고 씬에 있던 상태 그대로 둔다. 게임 설정 화면에서 이 값을 실행 중에도
+      // 바꿀 수 있으므로(아래 while 루프 참고), 시작할 때 값은 초깃값일 뿐이다.
       bool showDebugPreview = HandVolley.MediaPipeHandSource.Instance != null &&
                               HandVolley.MediaPipeHandSource.Instance.ShowDebugLandmarks;
 
@@ -135,48 +171,56 @@ namespace Mediapipe.Unity.Sample.HandLandmarkDetection
       // 이 Camera 는 게임 화면(코트/공/손)과 절대 안 겹치도록 원점에서 아주 먼 허공에
       // 놓고, Camera.rect 로 화면 오른쪽 위 작은 영역에만 렌더링해서 나머지 3D 게임 화면과
       // 기존 "Main Canvas" 의 다른 UI(회색 패널 등)에는 전혀 영향을 주지 않는다.
+      // HandVolley 연결: 게임 설정 화면에서 카메라 디버그 미리보기를 실행 중에도 켜고 끌
+      // 수 있게 하려면, 처음에 꺼진 상태로 시작하더라도 이 Canvas/Camera 배선은 미리
+      // 해 둬야 한다 — 그래서 showDebugPreview 값과 무관하게 항상 한 번 실행한다.
+      // 실제로 보이고 안 보이고는 밑에서 SetDebugPreviewVisible 로 따로 제어한다.
+      var previewCanvasRt = GetOrCreateDebugPreviewCanvas();
+      var screenRt = screen != null ? screen.GetComponent<RectTransform>() : null;
+
+      if (screenRt != null)
+      {
+        screenRt.SetParent(previewCanvasRt, worldPositionStays: false);
+        // 프리팹 원래 앵커(중앙 고정)로 되돌린다. AutoFit 은 "부모 rect 안에 화면비를
+        // 유지하며 맞춘다" 는 전제로 동작하므로, 앵커가 다른 값으로 남아 있으면
+        // (예전 코드가 오른쪽 아래로 바꿔놓은 채였다면) 그 전제가 깨진다.
+        screenRt.anchorMin = new Vector2(0.5f, 0.5f);
+        screenRt.anchorMax = new Vector2(0.5f, 0.5f);
+        screenRt.pivot = new Vector2(0.5f, 0.5f);
+        screenRt.anchoredPosition = Vector2.zero;
+      }
+
+      // AutoFit/AnnotationController.Start() 는 이 프레임의 나머지 Update 이후에나
+      // 실행되므로, 한 프레임 기다렸다가 실제로 계산된 크기를 찍어봐야 의미가 있다.
+      yield return null;
+
+      var annotationRt = _handLandmarkerResultAnnotationController != null
+          ? _handLandmarkerResultAnnotationController.GetComponent<RectTransform>()
+          : null;
+      var rootAnnotation = _handLandmarkerResultAnnotationController != null
+          ? _handLandmarkerResultAnnotationController.GetComponentInChildren<HierarchicalAnnotation>(true)
+          : null;
+
+      // 점/선 기본 크기(반지름 15, 선 두께 1.0)는 원래 샘플처럼 화면 전체를 채우는
+      // 큰 미리보기를 기준으로 잡혀 있어서, 이 작은 구석 미리보기에서는 손이 안 보일
+      // 정도로 큰 점으로 덮여 보인다. 작은 미리보기 크기에 맞게 축소한다.
+      if (rootAnnotation is MultiHandLandmarkListAnnotation multiHandAnnotation)
+      {
+        multiHandAnnotation.SetLandmarkRadius(4f);
+        multiHandAnnotation.SetConnectionWidth(0.35f);
+      }
+
       if (showDebugPreview)
       {
-        var previewCanvasRt = GetOrCreateDebugPreviewCanvas();
-        var screenRt = screen != null ? screen.GetComponent<RectTransform>() : null;
-
-        if (screenRt != null)
-        {
-          screenRt.SetParent(previewCanvasRt, worldPositionStays: false);
-          // 프리팹 원래 앵커(중앙 고정)로 되돌린다. AutoFit 은 "부모 rect 안에 화면비를
-          // 유지하며 맞춘다" 는 전제로 동작하므로, 앵커가 다른 값으로 남아 있으면
-          // (예전 코드가 오른쪽 아래로 바꿔놓은 채였다면) 그 전제가 깨진다.
-          screenRt.anchorMin = new Vector2(0.5f, 0.5f);
-          screenRt.anchorMax = new Vector2(0.5f, 0.5f);
-          screenRt.pivot = new Vector2(0.5f, 0.5f);
-          screenRt.anchoredPosition = Vector2.zero;
-        }
-
-        // AutoFit/AnnotationController.Start() 는 이 프레임의 나머지 Update 이후에나
-        // 실행되므로, 한 프레임 기다렸다가 실제로 계산된 크기를 찍어봐야 의미가 있다.
-        yield return null;
-
-        var annotationRt = _handLandmarkerResultAnnotationController != null
-            ? _handLandmarkerResultAnnotationController.GetComponent<RectTransform>()
-            : null;
-        var rootAnnotation = _handLandmarkerResultAnnotationController != null
-            ? _handLandmarkerResultAnnotationController.GetComponentInChildren<HierarchicalAnnotation>(true)
-            : null;
-
-        // 점/선 기본 크기(반지름 15, 선 두께 1.0)는 원래 샘플처럼 화면 전체를 채우는
-        // 큰 미리보기를 기준으로 잡혀 있어서, 이 작은 구석 미리보기에서는 손이 안 보일
-        // 정도로 큰 점으로 덮여 보인다. 작은 미리보기 크기에 맞게 축소한다.
-        if (rootAnnotation is MultiHandLandmarkListAnnotation multiHandAnnotation)
-        {
-          multiHandAnnotation.SetLandmarkRadius(4f);
-          multiHandAnnotation.SetConnectionWidth(0.35f);
-        }
-
         Debug.Log("[HandVolley] 미리보기 진단 — " +
                   $"screen active={(screenRt == null ? "null" : screenRt.gameObject.activeInHierarchy.ToString())} rect={(screenRt == null ? "null" : screenRt.rect.ToString())} | " +
                   $"annotationLayer active={(annotationRt == null ? "null" : annotationRt.gameObject.activeInHierarchy.ToString())} rect={(annotationRt == null ? "null" : annotationRt.rect.ToString())} | " +
                   $"rootAnnotation={(rootAnnotation == null ? "없음(!)" : $"{rootAnnotation.name} active={rootAnnotation.isActiveInHierarchy}")}");
       }
+
+      // 초기 상태를 반영한다 — 카메라/캔버스는 방금 항상 만들었으므로, 꺼진 채로
+      // 시작하는 경우 여기서 명시적으로 숨겨야 한다 (새로 만든 GameObject 는 기본 활성).
+      SetDebugPreviewVisible(showDebugPreview);
 
       var transformationOptions = imageSource.GetTransformationOptions();
       var flipHorizontally = transformationOptions.flipHorizontally;
@@ -201,6 +245,16 @@ namespace Mediapipe.Unity.Sample.HandLandmarkDetection
           yield return new WaitWhile(() => isPaused);
         }
 
+        // HandVolley 연결: 게임 설정 화면에서 카메라 디버그 토글을 눌렀는지 매 프레임
+        // 확인한다. 파이프라인을 재시작하지 않고 미리보기만 즉시 켜고 끈다.
+        bool wantDebugPreview = HandVolley.MediaPipeHandSource.Instance != null &&
+                                HandVolley.MediaPipeHandSource.Instance.ShowDebugLandmarks;
+        if (wantDebugPreview != showDebugPreview)
+        {
+          showDebugPreview = wantDebugPreview;
+          SetDebugPreviewVisible(showDebugPreview);
+        }
+
         // HandVolley 연결: 검출 결과는 계속 들어오는데 실제로 점이 안 보인다는 제보가 있어
         // 메인 스레드에서 주기적으로 (약 2초마다) 실제 렌더링 오브젝트의 활성 상태를 찍어본다.
         // (OnHandLandmarkDetectionOutput 쪽은 워커 스레드에서 호출될 수 있어 Unity API를
@@ -210,9 +264,9 @@ namespace Mediapipe.Unity.Sample.HandLandmarkDetection
         if (showDebugPreview && _handLandmarkerResultAnnotationController != null && Time.time >= nextDebugStatusLogTime)
         {
           nextDebugStatusLogTime = Time.time + 2f;
-          var rootAnnotation = _handLandmarkerResultAnnotationController.GetComponentInChildren<HierarchicalAnnotation>(true);
+          var loopRootAnnotation = _handLandmarkerResultAnnotationController.GetComponentInChildren<HierarchicalAnnotation>(true);
           Debug.Log("[HandVolley] 랜드마크 상태 — " +
-                    $"root={(rootAnnotation == null ? "없음(!)" : $"{rootAnnotation.name} active={rootAnnotation.isActiveInHierarchy}")}");
+                    $"root={(loopRootAnnotation == null ? "없음(!)" : $"{loopRootAnnotation.name} active={loopRootAnnotation.isActiveInHierarchy}")}");
         }
 
         if (!_textureFramePool.TryGetTextureFrame(out var textureFrame))
@@ -335,6 +389,24 @@ namespace Mediapipe.Unity.Sample.HandLandmarkDetection
       _debugPreviewCanvas.planeDistance = 10f;
 
       return _debugPreviewCanvas.GetComponent<RectTransform>();
+    }
+
+    /// <summary>
+    /// HandVolley 연결: 카메라 디버그 미리보기(웹캠 화면 + 손 랜드마크 오버레이 + 그
+    /// 전용 Camera/Canvas)를 한 번에 켜고 끈다. 파이프라인 자체(웹캠 캡처, MediaPipe
+    /// 추론)는 계속 돌아간다 — 화면에 그리는지 여부만 바뀐다. 카메라를 꺼 두면
+    /// _debugPreviewCamera 도 비활성화되어, 화면 구석에 항상 그려지던 검은 사각형(카메라의
+    /// SolidColor 클리어)도 함께 사라진다.
+    /// </summary>
+    private void SetDebugPreviewVisible(bool visible)
+    {
+      if (screen != null) screen.gameObject.SetActive(visible);
+      if (_handLandmarkerResultAnnotationController != null)
+      {
+        _handLandmarkerResultAnnotationController.gameObject.SetActive(visible);
+      }
+      if (_debugPreviewCamera != null) _debugPreviewCamera.gameObject.SetActive(visible);
+      if (_debugPreviewCanvas != null) _debugPreviewCanvas.gameObject.SetActive(visible);
     }
   }
 }

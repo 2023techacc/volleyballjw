@@ -88,7 +88,7 @@ namespace HandVolley
         [Tooltip("비거리 측정 코트의 길이 (m). 22 m/s 최대 타구는 바운스와 구름까지 " +
                  "포함하면 약 90m 까지 나간다.")]
         [SerializeField] private float _fieldLength = 220f;
-        [SerializeField] private float _fieldWidth = 28f;
+        [SerializeField] private float _fieldWidth = 14f;
 
         [Tooltip("거리 표시선 간격 (m)")]
         [SerializeField] private float _markerSpacing = 10f;
@@ -109,8 +109,14 @@ namespace HandVolley
                  "화면 구도상 필요한 것보다도 더 낮춰 뒀다).")]
         [SerializeField] private float _netHeight = 1.2f;
         [Tooltip("그물이 시작되는 높이 (m). 이 아래는 뚫려 있어서(실제 네트처럼) 바닥에 " +
-                 "떨어져 굴러가는 공이 네트에 막히지 않고 지나간다.")]
-        [SerializeField] private float _netGapHeight = 0.4f;
+                 "떨어져 굴러가는 공이 네트에 막히지 않고 지나간다. 초심자가 낮게 친 공도 " +
+                 "너그럽게 지나가도록 넓혀 뒀다.")]
+        [SerializeField] private float _netGapHeight = 0.55f;
+        [Tooltip("네트 위쪽 판정을 시각적 높이보다 이만큼 낮춰서 잡는다 (m). 공은 반지름이 " +
+                 "있어서 중심이 네트 높이보다 위에 있어도 아랫부분이 여전히 걸릴 수 있는데, " +
+                 "이 여유값만큼 판정 상단을 낮춰 두면 네트 위쪽을 살짝 스치듯 넘어가는 " +
+                 "공은 튕기지 않고 그대로 지나간다. 그물 테이프(시각)는 _netHeight 그대로다.")]
+        [SerializeField] private float _netTopMargin = 0.18f;
         [Tooltip("네트에 맞았을 때 반발 정도. 너무 높으면 살짝 스친 공도 엉뚱한 방향으로 " +
                  "튕겨서 초심자에게 억울하게 느껴지므로 낮춰 뒀다.")]
         [SerializeField] private float _netBounciness = 0.6f;
@@ -365,11 +371,19 @@ namespace HandVolley
             // (손가락/히트박스와 같은 이유로) 물리가 불안정해진다. 그물 영역 전체를
             // 덮는 콜라이더 하나로 처리하고, 렌더러는 이미 위의 얇은 선들이 담당하므로
             // 이 콜라이더는 보이지 않게 지운다.
+            //
+            // 판정 상단은 시각적 네트 높이(_netHeight)보다 _netTopMargin 만큼 낮게 잡는다.
+            // 공은 반지름이 있어서 중심이 네트 위로 살짝 올라와도 아랫부분은 여전히
+            // 네트 높이 아래일 수 있는데, 그 상태에서까지 튕기면 "분명히 넘겼는데 걸렸다"는
+            // 느낌을 준다. 시각용 테이프/그물 선은 그대로 _netHeight 에 두고 판정만 낮춘다.
+            float colliderTop = Mathf.Max(_netGapHeight + 0.05f, _netHeight - _netTopMargin);
+            float colliderHeight = colliderTop - _netGapHeight;
+
             var netCollider = GameObject.CreatePrimitive(PrimitiveType.Cube);
             netCollider.name = "NetCollider";
             netCollider.transform.SetParent(net.transform, false);
-            netCollider.transform.localPosition = new Vector3(0f, _netGapHeight + meshHeight * 0.5f, 0f);
-            netCollider.transform.localScale = new Vector3(halfWidth * 2f, meshHeight, 0.08f);
+            netCollider.transform.localPosition = new Vector3(0f, _netGapHeight + colliderHeight * 0.5f, 0f);
+            netCollider.transform.localScale = new Vector3(halfWidth * 2f, colliderHeight, 0.08f);
             DestroyImmediate(netCollider.GetComponent<Renderer>());
 
             var netPhysics = netCollider.GetComponent<BoxCollider>();

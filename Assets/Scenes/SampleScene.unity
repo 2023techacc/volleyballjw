@@ -167,14 +167,14 @@ MonoBehaviour:
   _hitboxDepthScale: 6
   _showHitbox: 0
   _fieldLength: 220
-  _fieldWidth: 28
+  _fieldWidth: 14
   _markerSpacing: 10
   _postSpacing: 25
   _maxBallSpeed: 38
   _buildNet: 1
   _netDistance: 4.5
   _netHeight: 1.2
-  _netGapHeight: 0.4
+  _netGapHeight: 0.55
   _netBounciness: 0.6
   _throwsPerTurn: 5
   _resultHoldSeconds: 0
