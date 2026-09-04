@@ -151,7 +151,7 @@ namespace HandVolley
             SetPrivate(chaseCam, "_launcher", launcher);
             chaseCam.gameObject.SetActive(true);
 
-            WireGameFlow(striker, launcher);
+            WireGameFlow(striker, launcher, chaseCam);
 
             int rend = striker.GetComponentsInChildren<Renderer>(true).Length;
             int coll = striker.GetComponentsInChildren<Collider>(true).Length;
@@ -648,7 +648,8 @@ namespace HandVolley
         }
 
         /// <summary>순위 저장소 + 시작 화면/결과 화면 상태 머신을 배선한다.</summary>
-        private void WireGameFlow(HandStriker striker, BallLauncher launcher)
+        private void WireGameFlow(HandStriker striker, BallLauncher launcher,
+                                  BallChaseCamera chaseCam)
         {
             var rankingGo = new GameObject("RankingStore");
             var ranking = rankingGo.AddComponent<RankingStore>();
@@ -661,6 +662,8 @@ namespace HandVolley
             SetPrivate(flow, "_launcher", launcher);
             SetPrivate(flow, "_ranking", ranking);
             SetPrivate(flow, "_handSize", handSize);
+            // 시작 화면 <-> 플레이 시점 전환을 GameFlowController 가 직접 지시한다.
+            SetPrivate(flow, "_camera", chaseCam);
             SetPrivate(flow, "_resultHoldSeconds", _resultHoldSeconds);
             SetPrivate(flow, "_showDebugText", _showDebugText);
             flowGo.SetActive(true);

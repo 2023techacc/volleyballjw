@@ -76,6 +76,32 @@ namespace HandVolley
             }
         }
 
+        /// <summary>시작 화면에서 Space 로도 게임을 시작할 수 있게 한다.</summary>
+        public static bool StartPressed
+        {
+            get
+            {
+#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
+                return Keyboard.current != null && Keyboard.current.spaceKey.wasPressedThisFrame;
+#else
+                return Input.GetKeyDown(KeyCode.Space);
+#endif
+            }
+        }
+
+        /// <summary>플레이 중 Esc 로 시작 화면으로 빠져나온다.</summary>
+        public static bool MenuPressed
+        {
+            get
+            {
+#if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
+                return Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame;
+#else
+                return Input.GetKeyDown(KeyCode.Escape);
+#endif
+            }
+        }
+
         public static bool MouseAvailable
         {
             get

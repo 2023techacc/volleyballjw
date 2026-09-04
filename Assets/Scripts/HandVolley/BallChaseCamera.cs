@@ -27,6 +27,15 @@ namespace HandVolley
                  "공과 코트 바닥이 함께 보인다.")]
         [SerializeField] private float _playerViewPitchDeg = 10f;
 
+        [Header("메뉴 시점")]
+        [Tooltip("시작 화면에서 쓰는 카메라 위치 (TrackingOrigin 기준). 플레이 시점보다 " +
+                 "높고 뒤로 물러나 코트 전경이 보이게 한다 — 시작 화면과 게임 화면이 " +
+                 "'다른 화면'으로 읽히게 만드는 가장 큰 장치.")]
+        [SerializeField] private Vector3 _menuViewOffset = new Vector3(0f, 1.35f, -3.6f);
+        [SerializeField] private float _menuFov = 55f;
+        [Tooltip("메뉴 시점에서 아래로 내려다보는 각도 (도).")]
+        [SerializeField] private float _menuViewPitchDeg = 14f;
+
         [Header("추적 시점")]
         [Tooltip("공 기준 뒤/위 거리")]
         [SerializeField] private float _chaseBack = 7f;
@@ -56,24 +65,44 @@ namespace HandVolley
         private float _fovVelocity;
         private Vector3 _lastBallPos;
         private Vector3 _travelDir = Vector3.forward;
+        private bool _menuView = true;
 
         private void Awake()
         {
             _cam = GetComponent<Camera>();
-            _cam.fieldOfView = _playerFov;
+            _cam.fieldOfView = _menuView ? _menuFov : _playerFov;
             if (_ball != null) _lastBallPos = _ball.position;
-            SnapToPlayerView();
+            SnapToCurrentView();
         }
 
-        private Quaternion PlayerViewRotation() =>
-            _trackingOrigin.rotation * Quaternion.Euler(_playerViewPitchDeg, 0f, 0f);
+        /// <summary>
+        /// 시작 화면 시점과 플레이 시점을 전환한다. 실제 이동은 LateUpdate 의
+        /// SmoothDamp 가 처리하므로, 이 호출 하나가 시안의 "카메라 돌리인" 이 된다.
+        /// snap 이면 보간 없이 즉시 옮긴다.
+        /// </summary>
+        public void SetMenuView(bool menuView, bool snap = false)
+        {
+            _menuView = menuView;
+            if (!snap) return;
+            SnapToCurrentView();
+            if (_cam != null) _cam.fieldOfView = menuView ? _menuFov : _playerFov;
+            _posVelocity = Vector3.zero;
+            _fovVelocity = 0f;
+        }
 
-        private void SnapToPlayerView()
+        private Vector3 ViewOffset => _menuView ? _menuViewOffset : _playerViewOffset;
+        private float ViewPitch => _menuView ? _menuViewPitchDeg : _playerViewPitchDeg;
+        private float ViewFov => _menuView ? _menuFov : _playerFov;
+
+        private Quaternion ViewRotation() =>
+            _trackingOrigin.rotation * Quaternion.Euler(ViewPitch, 0f, 0f);
+
+        private void SnapToCurrentView()
         {
             if (_trackingOrigin == null) return;
             transform.SetPositionAndRotation(
-                _trackingOrigin.TransformPoint(_playerViewOffset),
-                PlayerViewRotation());
+                _trackingOrigin.TransformPoint(ViewOffset),
+                ViewRotation());
         }
 
         private void LateUpdate()
@@ -99,9 +128,9 @@ namespace HandVolley
             }
             else
             {
-                targetPos = _trackingOrigin.TransformPoint(_playerViewOffset);
-                targetRot = PlayerViewRotation();
-                targetFov = _playerFov;
+                targetPos = _trackingOrigin.TransformPoint(ViewOffset);
+                targetRot = ViewRotation();
+                targetFov = ViewFov;
             }
 
             targetPos.y = Mathf.Max(targetPos.y, _minHeight);
@@ -123,6 +152,8 @@ namespace HandVolley
             rot = Quaternion.identity;
 
             if (_ball == null) return false;
+            // 시작 화면에서는 공이 코트에 놓여 있을 뿐이라 절대 추적하지 않는다.
+            if (_menuView) return false;
             if (_launcher != null && !_launcher.BallInFlight) return false;
 
             Vector3 bp = _ball.position;
